@@ -1,0 +1,74 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environments
+.venv/
+venv/
+env/
+.env
+.env.*
+.venv_kokoro/
+
+# Local model/cache artifacts
+.cache/
+models/
+best.pt
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+*.bin
+
+# Runtime outputs and experiment artifacts
+runs/
+runs_*/
+runs_modular/
+runlog/
+logs/
+outputs/
+artifacts/
+inspect_artifacts/
+memory_bank/
+*.jsonl
+*.csv
+online_fusion_state.json
+ops_state.json
+ops_state_history.jsonl
+
+# Data/media
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.flac
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tiff
+*.npy
+*.npz
+*.pkl
+*.pickle
+
+# Local reference papers and third-party source drops
+reference/
+*.pdf
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/

@@ -1,0 +1,273 @@
+video:
+  stride: 3
+  write_annotated: false
+  output_fps: null
+
+camera:
+  index: 0
+  backend: "auto"
+  width: 1280
+  height: 720
+  fps: 30.0
+  buffer_size: 1
+  warmup_frames: 8
+  warmup_delay_ms: 40
+  read_retry_limit: 60
+  read_retry_delay_ms: 50
+  detection_conf: 0.30
+  detection_tta: false
+
+detection:
+  conf: 0.25
+  tta: true
+  nms_iou: 0.4
+  use_builtin_tta: false
+  min_box_area_ratio: 0.0002
+  max_box_area_ratio: 0.60
+  max_aspect_ratio: 6.0
+  reject_multi_border_boxes: true
+  border_margin_px: 4
+  max_per_class: 2
+  dedupe_iou: 0.65
+
+geometry:
+  backend: "gradient"
+  moge_model: "Ruicheng/moge-2-vits-normal"
+  use_fp16: true
+  resolution_level: 9
+  apply_mask: true
+
+temporal:
+  backend: "bytetrack_lite"
+  window: 3
+  iou_thr: 0.35
+  track_high_thresh: 0.32
+  track_low_thresh: 0.10
+  new_track_thresh: 0.40
+  match_iou_thr: 0.25
+  lost_buffer: 8
+  min_confirmed_hits: 2
+  smooth_alpha: 0.70
+
+depth_context:
+  tau_p: 80.0
+  tau_d: 0.12
+  use_relevant_for_rules: true
+
+stability:
+  stable_n: 5
+  require_same_step: 2
+
+scene_graph:
+  enabled: true
+  depth_margin: 0.08
+  contact_pixel_gap: 24.0
+  contact_depth_gap: 0.12
+  support_vertical_gap: 20.0
+  support_overlap_ratio: 0.25
+  max_relations: 24
+
+interaction:
+  enabled: true
+  hand_names: ["hand", "left_hand", "right_hand", "glove"]
+  tool_names: ["screwdriver", "wrench", "pliers", "tool"]
+  exclude_object_names: ["person", "arm", "hand", "left_hand", "right_hand", "glove"]
+  contact_margin_px: 18.0
+  near_margin_px: 48.0
+  depth_contact_gap: 0.12
+  min_contact_score: 0.35
+  history: 6
+
+segmentation:
+  backend: "none"  # set to "sam3.1" for best SAM3.1 concept masks; none keeps bbox/geometry fallback
+  model_name: "facebook/sam3.1"
+  device: "auto"
+  prompts: ["hand", "glove", "screwdriver"]
+  score_threshold: 0.45
+  max_masks: 32
+  fail_on_unavailable: true
+
+experts:
+  steps: ["S1", "S2", "S3", "S4"]
+  gallery_root: ""  # leave empty to auto-discover mica_step_modular/gallery or test/{after,before}_online
+  gallery_exts: [".jpg", ".jpeg", ".png", ".bmp"]
+  gallery_embed: "hybrid-4"
+  retrieval_topk: 5
+  strict_gallery: false
+
+memory:
+  preset: "custom"
+  enabled: true
+  session_enabled: true
+  long_term_enabled: true
+  auto_capture_enabled: true
+  long_term_path: ""
+  topk: 6
+  max_per_source: 3
+  recall_margin: 0.18
+  recall_disagreement: 0.30
+  recall_cooldown: 2
+  recall_on_transition: true
+  vector_weight: 0.72
+  token_weight: 0.20
+  prev_step_bonus: 0.08
+  recency_half_life_sec: 1800.0
+  session_source_weight: 1.0
+  long_term_source_weight: 0.85
+  dedup_similarity: 0.97
+  min_auto_capture_confidence: 0.78
+  accepted_long_term_margin: 0.22
+  accepted_long_term_disagreement: 0.30
+  corrected_source_gain: 1.15
+  accepted_source_gain: 1.0
+  auto_source_gain: 0.85
+
+review:
+  enabled: true
+  low_confidence: 0.62
+  margin_threshold: 0.12
+  disagreement_threshold: 0.34
+  memory_confidence_threshold: 0.55
+  correction_window: 48
+  correction_streak: 2
+  cooldown_frames: 6
+  prefer_vote_count: 2
+  prefer_confidence: 0.58
+  prefer_margin: 0.10
+  hold_confidence: 0.48
+  request_human_confidence: 0.42
+  reviewer_feedback_strength: 0.35
+  evidence_prompt_enabled: true
+
+events:
+  enabled: true
+
+ops:
+  enabled: true
+  persist_history: true
+
+ui:
+  enabled: true
+  window_name: "MICA Live"
+  focus_window_name: "MICA Focus"
+  show_focus: true
+  show_help: true
+  key_quit: "q"
+  key_pause: "p"
+  key_voice: "v"
+  key_mute: "m"
+  key_feedback: "f"
+  key_help: "h"
+
+voice:
+  enabled: true
+  mode: "manual"  # switch to always_on for a continuous voice assistant
+  backend: "auto"  # prefers faster_whisper, falls back to transformers if CTranslate2 is unstable
+  model_name: "distil-small.en"
+  cache_dir: "F:/Hackathon/ACVR/mica_step_modular/.cache/stt"
+  language: "en"
+  wake_words: ["mica", "assistant"]
+  require_wake_word_in_always_on: true
+  command_max_tokens: 6
+  compute_type: "auto"
+  cpu_threads: 0
+  sample_rate: 16000
+  manual_duration_sec: 4.0
+  chunk_duration_sec: 2.5
+  cooldown_sec: 1.2
+  min_rms: 0.008
+  device: null
+  mute_by_default: false
+
+speech:
+  enabled: true
+  backend: "auto"  # switch to "kokoro" to use the isolated Kokoro-82M sidecar
+  rate: 1
+  volume: 1.0
+  voice_name: ""
+  kokoro_model_path: "F:/Hackathon/ACVR/mica_step_modular/models/kokoro-82m"
+  kokoro_voices_path: ""  # optional; auto-discovered when empty
+  kokoro_voice: "af_sarah"
+  kokoro_language: "en-us"
+  kokoro_speed: 1.0
+  kokoro_python_path: "F:/Hackathon/ACVR/mica_step_modular/.venv_kokoro/Scripts/python.exe"
+  dedupe_window_sec: 1.5
+  drop_pending_on_new: true
+  interrupt_on_voice_input: true
+
+assistant:
+  enabled: true
+  history_limit: 12
+  relation_limit: 3
+  overlay_chars: 120
+
+temporal_step:
+  enabled: true
+  backend: "ema_graph"
+  history_size: 12
+  ema_alpha: 0.55
+  device: "cpu"
+  checkpoint_path: ""
+  gru_hidden_size: 0
+  learned_token_aggregation: false
+  token_hidden_size: 24
+  token_output_size: 48
+  state_score_weight: 0.60
+  retrieval_score_weight: 0.25
+  memory_score_weight: 0.15
+  graph_transition_penalty: 0.18
+  graph_requirement_bonus: 0.10
+  graph_requirement_penalty: 0.12
+  graph_forbid_penalty: 0.16
+  graph_relation_bonus: 0.04
+  graph_relation_penalty: 0.06
+
+online_fusion:
+  state_gate: 0.5
+  temporal_gate: 0.45
+  retrieval_gate: 0.5
+  memory_gate: 0.2
+  leak_state: 0.05
+  leak_temporal: 0.03
+  leak_retrieval: 0.05
+  leak_memory: 0.02
+  clamp_lo: 0.05
+  clamp_hi: 0.95
+  floor_per_class: 0.02
+  bias_cap: 0.5
+  eta: 0.10
+  gate_eta: 0.05
+  margin: 0.20
+  positive_margin: 0.05
+  positive_scale: 0.35
+  hit_gamma: 2.0
+  error_gamma: 2.0
+  freeze_confidence: 0.90
+  exposure_rho: 0.5
+  balance_window: 50
+  balance_tau: 0.6
+  lambda_transition: 2.0
+  context_gate_enabled: true
+  context_gate_scale: 0.35
+  context_gate_eta: 0.02
+  context_gate_checkpoint: ""
+  transitions:
+    S1: ["S1", "S2"]
+    S2: ["S1", "S2", "S3"]
+    S3: ["S2", "S3", "S4"]
+    S4: ["S3", "S4"]
+
+corl_ablation:
+  gru_checkpoint: ""
+  gru_aux_checkpoint: ""
+  gru_agg_checkpoint: ""
+  gru_agg_offline_gate_checkpoint: ""
+  gru_agg_offline_gate_context_gate_checkpoint: ""
+  full_online_adapt_checkpoint: ""
+  full_online_adapt_context_gate_checkpoint: ""
+
+runlog:
+  save_dir: "runs_modular"
+  detail_level: "debug"
+  live_detail_level: "sparse"
+  persist_temporal_tokens: true
