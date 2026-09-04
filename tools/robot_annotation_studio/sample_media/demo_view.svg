@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#1b222a"/>
+  <rect x="140" y="110" width="1000" height="500" fill="#273442" stroke="#647180" stroke-width="3"/>
+  <circle cx="640" cy="340" r="115" fill="#4d5b69" stroke="#aeb7c2" stroke-width="8"/>
+  <circle cx="640" cy="340" r="44" fill="#18212b"/>
+  <text x="640" y="535" text-anchor="middle" fill="#d8dee5" font-family="Segoe UI, Arial" font-size="34">Replace this demonstration manifest with robot images</text>
+</svg>

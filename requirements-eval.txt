@@ -1,0 +1,4 @@
+-r requirements.txt
+openai>=1.60,<3
+google-genai>=1.0,<2
+open-clip-torch>=2.24,<4

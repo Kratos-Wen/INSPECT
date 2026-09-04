@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from ..types import EvidenceToken, StepPrediction
+from ..core_types import EvidenceToken, StepPrediction
 from .step_graph import CompiledStepGraphPrior
 from .temporal_layers import LearnedTokenAggregator
 from .timeline_store import EvidenceTimelineStore

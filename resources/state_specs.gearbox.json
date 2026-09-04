@@ -1,0 +1,255 @@
+{
+  "states": [
+    {
+      "state_id": "S1",
+      "nominal_step": "S1",
+      "description": "The observation stream contains a visible gearbox component before a verifiable assembly transition.",
+      "preconditions": ["visual:evidence_present"],
+      "interaction_evidence": [
+        "interaction:active_object:type_6_gearbox_cover",
+        "interaction:active_object:type_6_gearbox_housing",
+        "interaction:active_object:type_7_gear",
+        "interaction:active_object:type_2_gear",
+        "interaction:active_object:type_5_gearbox_cover",
+        "interaction:active_object:type_5_gearbox_housing",
+        "interaction:active_object:type_8_gear",
+        "interaction:active_object:type_3_gear"
+      ],
+      "transition_evidence": [
+        "track:motion:type_6_gearbox_cover",
+        "track:motion:type_6_gearbox_housing",
+        "track:motion:type_7_gear",
+        "track:motion:type_2_gear",
+        "track:motion:type_5_gearbox_cover",
+        "track:motion:type_5_gearbox_housing",
+        "track:motion:type_8_gear",
+        "track:motion:type_3_gear"
+      ],
+      "postcondition_evidence": [
+        "track:stable_object:type_6_gearbox_cover",
+        "track:stable_object:type_6_gearbox_housing",
+        "track:stable_object:type_7_gear",
+        "track:stable_object:type_2_gear",
+        "track:stable_object:type_5_gearbox_cover",
+        "track:stable_object:type_5_gearbox_housing",
+        "track:stable_object:type_8_gear",
+        "track:stable_object:type_3_gear",
+        "object:type_6_gearbox_cover",
+        "object:type_6_gearbox_housing",
+        "object:type_7_gear",
+        "object:type_2_gear",
+        "object:type_5_gearbox_cover",
+        "object:type_5_gearbox_housing",
+        "object:type_8_gear",
+        "object:type_3_gear"
+      ],
+      "negative_evidence": [],
+      "admissibility_evidence": [
+        "track:stable_object:type_6_gearbox_housing",
+        "track:stable_object:type_5_gearbox_housing",
+        "track:stable_object:type_7_gear",
+        "track:stable_object:type_8_gear"
+      ],
+      "inspection_targets": [
+        "type_6_gearbox_housing",
+        "type_5_gearbox_housing",
+        "type_7_gear",
+        "type_8_gear"
+      ],
+      "next_states": ["S2"]
+    },
+    {
+      "state_id": "S2",
+      "nominal_step": "S2",
+      "description": "The first gear is seated in the matching gearbox housing; mere proximity or hand contact is not sufficient.",
+      "preconditions": [
+        "track:stable_object:type_6_gearbox_housing",
+        "track:stable_object:type_7_gear",
+        "track:stable_object:type_5_gearbox_housing",
+        "track:stable_object:type_8_gear",
+        "object:type_6_gearbox_housing",
+        "object:type_7_gear",
+        "object:type_5_gearbox_housing",
+        "object:type_8_gear"
+      ],
+      "interaction_evidence": [
+        "interaction:active_object:type_7_gear",
+        "interaction:active_object:type_8_gear",
+        "contact:hand:contact:type_7_gear",
+        "contact:hand:contact:type_8_gear"
+      ],
+      "transition_evidence": [
+        "transition:contact_driven_change",
+        "interaction:contact_phase:approach",
+        "interaction:contact_phase:contact",
+        "interaction:contact_phase:release",
+        "track:motion:type_7_gear",
+        "track:motion:type_8_gear",
+        "relation:type_7_gear:near:type_6_gearbox_housing",
+        "relation:type_7_gear:contacting:type_6_gearbox_housing",
+        "relation:type_7_gear:overlapping:type_6_gearbox_housing",
+        "relation:type_8_gear:near:type_5_gearbox_housing",
+        "relation:type_8_gear:contacting:type_5_gearbox_housing",
+        "relation:type_8_gear:overlapping:type_5_gearbox_housing"
+      ],
+      "postcondition_evidence": [
+        "relation:type_7_gear:inside:type_6_gearbox_housing",
+        "relation:type_7_gear:aligned_with:type_6_gearbox_housing",
+        "relation:type_8_gear:inside:type_5_gearbox_housing",
+        "relation:type_8_gear:aligned_with:type_5_gearbox_housing"
+      ],
+      "negative_evidence": [
+        "relation:type_7_gear:inside:type_5_gearbox_housing",
+        "relation:type_8_gear:inside:type_6_gearbox_housing",
+        "relation:type_7_gear:aligned_with:type_5_gearbox_housing",
+        "relation:type_8_gear:aligned_with:type_6_gearbox_housing",
+        "failure:partial_insertion",
+        "failure:wrong_housing",
+        "failure:occluded"
+      ],
+      "admissibility_evidence": [
+        "relation:type_7_gear:inside:type_6_gearbox_housing",
+        "relation:type_7_gear:aligned_with:type_6_gearbox_housing",
+        "relation:type_8_gear:inside:type_5_gearbox_housing",
+        "relation:type_8_gear:aligned_with:type_5_gearbox_housing"
+      ],
+      "inspection_targets": [
+        "type_7_gear:type_6_gearbox_housing_interface",
+        "type_8_gear:type_5_gearbox_housing_interface"
+      ],
+      "next_states": ["S3"]
+    },
+    {
+      "state_id": "S3",
+      "nominal_step": "S3",
+      "description": "The second gear is seated in the housing and meshed with the first gear; visibility of the loose gear is not sufficient.",
+      "preconditions": [
+        "track:stable_object:type_6_gearbox_housing",
+        "track:stable_object:type_7_gear",
+        "track:stable_object:type_2_gear",
+        "track:stable_object:type_5_gearbox_housing",
+        "track:stable_object:type_8_gear",
+        "track:stable_object:type_3_gear",
+        "object:type_6_gearbox_housing",
+        "object:type_7_gear",
+        "object:type_2_gear",
+        "object:type_5_gearbox_housing",
+        "object:type_8_gear",
+        "object:type_3_gear"
+      ],
+      "interaction_evidence": [
+        "interaction:active_object:type_2_gear",
+        "interaction:active_object:type_3_gear",
+        "contact:hand:contact:type_2_gear",
+        "contact:hand:contact:type_3_gear"
+      ],
+      "transition_evidence": [
+        "transition:contact_driven_change",
+        "interaction:contact_phase:approach",
+        "interaction:contact_phase:contact",
+        "interaction:contact_phase:release",
+        "track:motion:type_2_gear",
+        "track:motion:type_3_gear",
+        "relation:type_2_gear:near:type_7_gear",
+        "relation:type_2_gear:contacting:type_7_gear",
+        "relation:type_2_gear:overlapping:type_7_gear",
+        "relation:type_3_gear:near:type_8_gear",
+        "relation:type_3_gear:contacting:type_8_gear",
+        "relation:type_3_gear:overlapping:type_8_gear"
+      ],
+      "postcondition_evidence": [
+        "relation:type_2_gear:inside:type_6_gearbox_housing",
+        "relation:type_2_gear:aligned_with:type_7_gear",
+        "relation:type_2_gear:contacting:type_7_gear",
+        "relation:type_3_gear:inside:type_5_gearbox_housing",
+        "relation:type_3_gear:aligned_with:type_8_gear",
+        "relation:type_3_gear:contacting:type_8_gear"
+      ],
+      "negative_evidence": [
+        "relation:type_2_gear:inside:type_5_gearbox_housing",
+        "relation:type_3_gear:inside:type_6_gearbox_housing",
+        "relation:type_2_gear:aligned_with:type_8_gear",
+        "relation:type_3_gear:aligned_with:type_7_gear",
+        "failure:unmeshed_gears",
+        "failure:wrong_second_gear",
+        "failure:occluded"
+      ],
+      "admissibility_evidence": [
+        "relation:type_2_gear:inside:type_6_gearbox_housing",
+        "relation:type_2_gear:aligned_with:type_7_gear",
+        "relation:type_2_gear:contacting:type_7_gear",
+        "relation:type_3_gear:inside:type_5_gearbox_housing",
+        "relation:type_3_gear:aligned_with:type_8_gear",
+        "relation:type_3_gear:contacting:type_8_gear"
+      ],
+      "inspection_targets": [
+        "type_2_gear:type_7_gear_mesh",
+        "type_3_gear:type_8_gear_mesh"
+      ],
+      "next_states": ["S4"]
+    },
+    {
+      "state_id": "S4",
+      "nominal_step": "S4",
+      "description": "The gearbox cover is aligned and seated on the matching housing.",
+      "preconditions": [
+        "track:stable_object:type_6_gearbox_cover",
+        "track:stable_object:type_6_gearbox_housing",
+        "track:stable_object:type_5_gearbox_cover",
+        "track:stable_object:type_5_gearbox_housing",
+        "object:type_6_gearbox_cover",
+        "object:type_6_gearbox_housing",
+        "object:type_5_gearbox_cover",
+        "object:type_5_gearbox_housing"
+      ],
+      "interaction_evidence": [
+        "interaction:active_object:type_6_gearbox_cover",
+        "interaction:active_object:type_5_gearbox_cover",
+        "contact:hand:contact:type_6_gearbox_cover",
+        "contact:hand:contact:type_5_gearbox_cover"
+      ],
+      "transition_evidence": [
+        "transition:contact_driven_change",
+        "interaction:contact_phase:approach",
+        "interaction:contact_phase:contact",
+        "interaction:contact_phase:release",
+        "track:motion:type_6_gearbox_cover",
+        "track:motion:type_5_gearbox_cover",
+        "relation:type_6_gearbox_cover:near:type_6_gearbox_housing",
+        "relation:type_6_gearbox_cover:overlapping:type_6_gearbox_housing",
+        "relation:type_5_gearbox_cover:near:type_5_gearbox_housing",
+        "relation:type_5_gearbox_cover:overlapping:type_5_gearbox_housing"
+      ],
+      "postcondition_evidence": [
+        "relation:type_6_gearbox_cover:aligned_with:type_6_gearbox_housing",
+        "relation:type_6_gearbox_cover:contacting:type_6_gearbox_housing",
+        "relation:type_6_gearbox_cover:overlapping:type_6_gearbox_housing",
+        "relation:type_5_gearbox_cover:aligned_with:type_5_gearbox_housing",
+        "relation:type_5_gearbox_cover:contacting:type_5_gearbox_housing",
+        "relation:type_5_gearbox_cover:overlapping:type_5_gearbox_housing"
+      ],
+      "negative_evidence": [
+        "relation:type_6_gearbox_cover:aligned_with:type_5_gearbox_housing",
+        "relation:type_5_gearbox_cover:aligned_with:type_6_gearbox_housing",
+        "relation:type_6_gearbox_cover:contacting:type_5_gearbox_housing",
+        "relation:type_5_gearbox_cover:contacting:type_6_gearbox_housing",
+        "failure:cover_not_seated",
+        "failure:wrong_cover",
+        "failure:occluded"
+      ],
+      "admissibility_evidence": [
+        "relation:type_6_gearbox_cover:aligned_with:type_6_gearbox_housing",
+        "relation:type_6_gearbox_cover:contacting:type_6_gearbox_housing",
+        "relation:type_6_gearbox_cover:overlapping:type_6_gearbox_housing",
+        "relation:type_5_gearbox_cover:aligned_with:type_5_gearbox_housing",
+        "relation:type_5_gearbox_cover:contacting:type_5_gearbox_housing",
+        "relation:type_5_gearbox_cover:overlapping:type_5_gearbox_housing"
+      ],
+      "inspection_targets": [
+        "type_6_gearbox_cover:type_6_gearbox_housing_seal",
+        "type_5_gearbox_cover:type_5_gearbox_housing_seal"
+      ],
+      "next_states": []
+    }
+  ]
+}

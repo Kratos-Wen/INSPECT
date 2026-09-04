@@ -2,9 +2,113 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, Optional
 
-from ..types import EvidenceToken, FeedbackEvent, FusionResult, StepPrediction
+from ..core_types import EvidenceToken, FeedbackEvent, FusionResult, StepPrediction
+
+
+class TimelineFeedbackProvider:
+    """Programmatic feedback provider backed by ego-video state annotations.
+
+    This is used for offline experiments where spoken state annotations are
+    treated as simulated human corrections. Labels outside the legal step set
+    are handled as no-step / invalid negative supervision.
+    """
+
+    request_on_unstable = True
+
+    def __init__(
+        self,
+        segments: Iterable[dict[str, object]],
+        steps: Iterable[str],
+        no_step_labels: Iterable[str] = ("WRONG", "INVALID", "NO_STEP", "NEGATIVE"),
+        min_interval_frames: int = 15,
+        accept_strength: float = 0.35,
+        correction_strength: float = 1.0,
+        no_step_strength: float = 1.0,
+    ) -> None:
+        self.segments = [
+            {
+                "state": str(item.get("state", "")).strip().upper(),
+                "start_frame": int(item.get("start_frame", 0) or 0),
+                "end_frame": item.get("end_frame", None),
+            }
+            for item in segments
+            if str(item.get("state", "")).strip()
+        ]
+        self.steps = {str(step).strip().upper() for step in steps}
+        self.no_step_labels = {str(label).strip().upper() for label in no_step_labels}
+        self.min_interval_frames = max(1, int(min_interval_frames))
+        self.accept_strength = float(accept_strength)
+        self.correction_strength = float(correction_strength)
+        self.no_step_strength = float(no_step_strength)
+        self._last_feedback_frame: Optional[int] = None
+
+    def request(
+        self,
+        fusion_result: FusionResult,
+        expert_predictions: dict[str, StepPrediction],
+        evidence_token: Optional[EvidenceToken] = None,
+        review_decision: Optional[object] = None,
+    ) -> Optional[FeedbackEvent]:
+        frame_index = int(getattr(evidence_token, "frame_index", 0) if evidence_token is not None else 0)
+        if self._last_feedback_frame is not None and frame_index - self._last_feedback_frame < self.min_interval_frames:
+            return None
+        truth = self._truth_for_frame(frame_index)
+        if not truth:
+            return None
+        predicted = str(fusion_result.step_id).strip().upper()
+        self._last_feedback_frame = frame_index
+        if truth in self.steps:
+            accepted = predicted == truth
+            return FeedbackEvent(
+                label=truth,
+                strength=self.accept_strength if accepted else self.correction_strength,
+                accepted=accepted,
+                source="gt_timeline",
+                note=f"simulated_human_feedback;truth={truth}",
+                extras={
+                    "truth": truth,
+                    "simulated_feedback": True,
+                    "evidence_feedback": {
+                        "status": "verified" if accepted else "corrected",
+                        "reason": "",
+                        "hypothesis": predicted,
+                        "review_action": getattr(review_decision, "action", "") if review_decision is not None else "",
+                    },
+                },
+            )
+        if truth in self.no_step_labels or truth.startswith("WRONG") or truth.startswith("INVALID"):
+            return FeedbackEvent(
+                label="INVALID",
+                strength=self.no_step_strength,
+                accepted=False,
+                source="gt_timeline",
+                note=f"simulated_no_step_feedback;truth={truth}",
+                extras={
+                    "truth": truth,
+                    "no_step": True,
+                    "simulated_feedback": True,
+                    "evidence_feedback": {
+                        "status": "rejected",
+                        "reason": "wrong_assembly",
+                        "hypothesis": predicted,
+                        "review_action": getattr(review_decision, "action", "") if review_decision is not None else "",
+                    },
+                },
+            )
+        return None
+
+    def _truth_for_frame(self, frame_index: int) -> str:
+        for item in self.segments:
+            start = int(item["start_frame"])
+            end_value = item.get("end_frame")
+            end = None if end_value is None else int(end_value)
+            if frame_index < start:
+                continue
+            if end is None or frame_index <= end:
+                return str(item["state"]).strip().upper()
+        return ""
 
 
 class ConsoleFeedbackProvider:
@@ -27,7 +131,7 @@ class ConsoleFeedbackProvider:
         message = f"[Feedback] stable prediction: fused={fusion_result.step_id} ({fusion_result.confidence:.2f}), {expert_summary}"
         print(message)
         user_input = input(
-            "[Feedback] press ENTER to accept, type S1/S2/... to correct, or 'skip' to ignore: "
+            "[Feedback] ENTER accept | 1/2/3/4 correct step | s skip: "
         ).strip()
         if not user_input:
             return self._with_evidence_prompt(
@@ -36,10 +140,11 @@ class ConsoleFeedbackProvider:
                 evidence_token=evidence_token,
                 review_decision=review_decision,
             )
-        if user_input.lower() == "skip":
+        if user_input.lower() in {"s", "skip"}:
             return None
+        normalized_step = self._normalize_step(user_input)
         return self._with_evidence_prompt(
-            FeedbackEvent(label=user_input.upper(), accepted=False, source="console"),
+            FeedbackEvent(label=normalized_step, accepted=False, source="console"),
             fusion_result=fusion_result,
             evidence_token=evidence_token,
             review_decision=review_decision,
@@ -102,6 +207,15 @@ class ConsoleFeedbackProvider:
             "5": "occluded",
         }
         return mapping.get(value.strip().lower(), value.strip().lower().replace(" ", "_"))
+
+    @staticmethod
+    def _normalize_step(value: str) -> str:
+        text = value.strip().upper()
+        if text.isdigit():
+            return f"S{text}"
+        if len(text) == 1 and text in {"A", "B", "C", "D"}:
+            return f"S{ord(text) - ord('A') + 1}"
+        return text
 
     @staticmethod
     def _evidence_summary(token: Optional[EvidenceToken]) -> list[str]:

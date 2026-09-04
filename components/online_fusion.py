@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ..types import EvidenceToken, FeedbackEvent, FusionResult, StepPrediction
+from ..core_types import EvidenceToken, FeedbackEvent, FusionResult, StepPrediction
 
 
 class AdaptiveExpertFusion:
@@ -209,14 +209,14 @@ class AdaptiveExpertFusion:
         expert_predictions: Dict[str, StepPrediction],
         fusion_result: FusionResult,
     ) -> None:
-        """Apply one online update from a human supervision event."""
+        """Apply a bounded multi-negative update from one supervision event."""
 
         label = str(feedback.label).strip().upper()
         if label not in self.step_to_index:
             return
-
-        runner_up = fusion_result.runner_up
-        if runner_up is None:
+        impact = self._feedback_impact(feedback, fusion_result.confidence)
+        impact *= self._source_reliability(feedback)
+        if impact <= 0.0:
             return
 
         dense_scores = {
@@ -224,58 +224,153 @@ class AdaptiveExpertFusion:
             for expert_name in self.expert_names
         }
         target_index = self.step_to_index[label]
-        competitor_index = self.step_to_index[runner_up]
-
-        current_margin = float(fusion_result.scores[label] - fusion_result.scores[runner_up])
         desired_margin = self.positive_margin if feedback.accepted else self.margin
-        loss = max(0.0, desired_margin - current_margin)
-
-        impact = self._feedback_impact(feedback, fusion_result.confidence)
-        if impact <= 0.0:
-            return
-        if feedback.accepted and loss <= 0.0:
+        competitors = []
+        for competitor, score in sorted(
+            fusion_result.scores.items(), key=lambda item: item[1], reverse=True
+        ):
+            competitor = str(competitor).strip().upper()
+            if competitor == label or competitor not in self.step_to_index:
+                continue
+            loss = max(
+                0.0,
+                desired_margin
+                - float(fusion_result.scores[label] - float(score)),
+            )
+            if loss > 0.0:
+                competitors.append((competitor, loss))
+        if not competitors:
             return
 
         eta_eff = self._effective_eta(label, feedback.strength)
         if feedback.accepted:
             eta_eff *= self.positive_scale
+        update_cap = eta_eff * impact / math.sqrt(float(len(competitors)))
+        if update_cap <= 0.0:
+            return
 
+        self._ensure_online_anchor()
         target_features = np.array(
             [dense_scores[expert_name][target_index] for expert_name in self.expert_names],
             dtype=np.float32,
         )
-        competitor_features = np.array(
-            [dense_scores[expert_name][competitor_index] for expert_name in self.expert_names],
-            dtype=np.float32,
-        )
-        feature_norm = float(
-            np.dot(target_features, target_features) + np.dot(competitor_features, competitor_features) + 1.0
-        )
-        tau = eta_eff * impact * max(loss, 1e-6) / feature_norm
-        if tau <= 0.0:
-            return
+        delta_weights = np.zeros_like(self.weights)
+        delta_bias = np.zeros_like(self.bias)
+        hardest_features = None
+        for rank, (competitor, loss) in enumerate(competitors):
+            competitor_index = self.step_to_index[competitor]
+            competitor_features = np.array(
+                [dense_scores[expert_name][competitor_index] for expert_name in self.expert_names],
+                dtype=np.float32,
+            )
+            feature_norm = float(
+                np.dot(target_features, target_features)
+                + np.dot(competitor_features, competitor_features)
+                + 2.0
+            )
+            tau = min(update_cap, loss / max(1e-9, feature_norm))
+            delta_weights[target_index, :] += tau * target_features
+            delta_weights[competitor_index, :] -= tau * competitor_features
+            delta_bias[target_index] += tau
+            delta_bias[competitor_index] -= tau
+            if rank == 0:
+                hardest_features = competitor_features
 
-        self.weights[target_index, :] += tau * target_features
-        self.weights[competitor_index, :] -= tau * competitor_features
-        self.bias[target_index] += tau
-        self.bias[competitor_index] -= tau
-
-        self._update_gates(
-            feedback=feedback,
-            label=label,
-            expert_predictions=expert_predictions,
-            fusion_result=fusion_result,
-            target_features=target_features,
-            competitor_features=competitor_features,
-            impact=impact,
+        max_norm = max(0.05, 2.0 * self.eta * max(0.25, impact))
+        update_norm = float(
+            math.sqrt(
+                float(np.sum(delta_weights * delta_weights))
+                + float(np.sum(delta_bias * delta_bias))
+            )
         )
+        if update_norm > max_norm:
+            scale = max_norm / max(1e-9, update_norm)
+            delta_weights *= scale
+            delta_bias *= scale
+        self.weights += delta_weights
+        self.bias += delta_bias
+
+        if hardest_features is not None:
+            self._update_gates(
+                feedback=feedback,
+                label=label,
+                expert_predictions=expert_predictions,
+                fusion_result=fusion_result,
+                target_features=target_features,
+                competitor_features=hardest_features,
+                impact=impact,
+            )
 
         self.feedback_counts[target_index] += 1
         self.recent_feedback.append(label)
         if len(self.recent_feedback) > self.balance_window:
             self.recent_feedback.pop(0)
+        self._regularize_online_state()
         self._normalize()
+        self.last_online_update = {
+            "label": label,
+            "accepted": bool(feedback.accepted),
+            "source": str(feedback.source),
+            "source_reliability": self._source_reliability(feedback),
+            "violating_competitors": [item[0] for item in competitors],
+            "update_norm": update_norm,
+            "impact": impact,
+        }
 
+        if self.state_path is not None:
+            self.save(self.state_path)
+
+    def apply_no_step_feedback(
+        self,
+        feedback: FeedbackEvent,
+        expert_predictions: Dict[str, StepPrediction],
+        fusion_result: FusionResult,
+    ) -> None:
+        """Apply negative supervision for invalid / no-step frames.
+
+        Unlike a normal correction, this does not move probability mass to a
+        different legal step. It only suppresses the current legal hypothesis
+        and reduces gates for experts that supported it.
+        """
+
+        rejected = str(fusion_result.step_id).strip().upper()
+        if rejected not in self.step_to_index:
+            return
+        impact = (
+            max(0.0, float(feedback.strength))
+            * max(0.15, float(fusion_result.confidence))
+            * self._source_reliability(feedback)
+        )
+        if impact <= 0.0:
+            return
+        self._ensure_online_anchor()
+        dense_scores = {
+            expert_name: self._dense_scores(expert_predictions.get(expert_name), expert_name)
+            for expert_name in self.expert_names
+        }
+        rejected_index = self.step_to_index[rejected]
+        eta_eff = self.eta * impact
+        self.bias[rejected_index] -= eta_eff
+
+        gate_delta = np.zeros((self.num_experts,), dtype=np.float32)
+        for expert_index, expert_name in enumerate(self.expert_names):
+            prediction = expert_predictions.get(expert_name)
+            top = str(prediction.step_id).strip().upper() if prediction is not None else ""
+            support = float(dense_scores[expert_name][rejected_index])
+            if top == rejected or support >= 0.50:
+                self.weights[rejected_index, expert_index] -= eta_eff * max(0.15, support)
+                gate_delta[expert_index] -= self.gate_eta * impact * max(0.25, support)
+
+        self.gates += gate_delta
+        self._update_context_weights_from_no_step(
+            feedback=feedback,
+            expert_predictions=expert_predictions,
+            fusion_result=fusion_result,
+            rejected=rejected,
+            impact=impact,
+        )
+        self._regularize_online_state()
+        self._normalize()
         if self.state_path is not None:
             self.save(self.state_path)
 
@@ -295,7 +390,9 @@ class AdaptiveExpertFusion:
             "recent_predictions": list(self.recent_predictions),
         }
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        temporary.replace(path)
 
     def _load(self, path: Path) -> None:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -345,6 +442,45 @@ class AdaptiveExpertFusion:
             return 0.0
         return -self.lambda_transition
 
+    def _ensure_online_anchor(self) -> None:
+        if hasattr(self, "_online_anchor_weights"):
+            return
+        self._online_anchor_weights = self.weights.copy()
+        self._online_anchor_bias = self.bias.copy()
+        self._online_anchor_gates = self.gates.copy()
+        self._online_anchor_context_weights = self.context_gate_weights.copy()
+        self._online_anchor_context_bias = self.context_gate_bias.copy()
+
+    def _regularize_online_state(self) -> None:
+        self._ensure_online_anchor()
+        feedback_mass = max(1, int(self.feedback_counts.sum()))
+        anchor_rate = max(0.005, min(0.025, 0.20 / math.sqrt(float(feedback_mass))))
+        self.weights = (1.0 - anchor_rate) * self.weights + anchor_rate * self._online_anchor_weights
+        self.bias = (1.0 - anchor_rate) * self.bias + anchor_rate * self._online_anchor_bias
+        self.gates = (1.0 - anchor_rate) * self.gates + anchor_rate * self._online_anchor_gates
+        self.context_gate_weights = (
+            (1.0 - anchor_rate) * self.context_gate_weights
+            + anchor_rate * self._online_anchor_context_weights
+        )
+        self.context_gate_bias = (
+            (1.0 - anchor_rate) * self.context_gate_bias
+            + anchor_rate * self._online_anchor_context_bias
+        )
+
+    @staticmethod
+    def _source_reliability(feedback: FeedbackEvent) -> float:
+        extras = dict(feedback.extras or {})
+        for key in ("trust", "source_confidence", "asr_confidence"):
+            if extras.get(key) is not None:
+                return float(np.clip(float(extras[key]), 0.0, 1.0))
+        source = str(feedback.source).strip().lower().replace("-", "_")
+        if source in {"human", "voice", "microphone", "console", "operator"}:
+            return 1.0
+        if source in {"simulated", "timeline_gt", "gt_timeline", "offline_replay"}:
+            return 0.65
+        if source in {"automatic", "pseudo_label", "self_training"}:
+            return 0.35
+        return 0.80
     def _feedback_impact(self, feedback: FeedbackEvent, confidence: float) -> float:
         confidence = float(np.clip(confidence, 0.0, 1.0))
         if feedback.accepted:
@@ -568,6 +704,35 @@ class AdaptiveExpertFusion:
                     target_sign[expert_index] += 1.0
                 if pred_step == fusion_result.step_id and fusion_result.step_id != label:
                     target_sign[expert_index] -= 1.0
+        self.context_gate_weights += self.context_gate_eta * impact * np.outer(target_sign, context_vector)
+        self.context_gate_bias += self.context_gate_eta * impact * target_sign
+
+    def _update_context_weights_from_no_step(
+        self,
+        *,
+        feedback: FeedbackEvent,
+        expert_predictions: Dict[str, StepPrediction],
+        fusion_result: FusionResult,
+        rejected: str,
+        impact: float,
+    ) -> None:
+        if not self.context_gate_enabled:
+            return
+        feature_payload = fusion_result.extras.get("context_gate_features", {})
+        if not isinstance(feature_payload, dict) or not feature_payload:
+            return
+        context_vector = np.asarray(
+            [float(feature_payload.get(name, 0.0)) for name in self.CONTEXT_FEATURE_NAMES],
+            dtype=np.float32,
+        )
+        if np.allclose(context_vector, 0.0):
+            return
+        target_sign = np.zeros((self.num_experts,), dtype=np.float32)
+        for expert_name, expert_index in self.expert_to_index.items():
+            prediction = expert_predictions.get(expert_name)
+            pred_step = str(prediction.step_id).strip().upper() if prediction is not None else ""
+            if pred_step == rejected:
+                target_sign[expert_index] -= 1.0
         self.context_gate_weights += self.context_gate_eta * impact * np.outer(target_sign, context_vector)
         self.context_gate_bias += self.context_gate_eta * impact * target_sign
 

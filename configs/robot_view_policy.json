@@ -1,0 +1,23 @@
+{
+  "schema": "inspect_robot_view_policy_v1",
+  "policy": "active_selector_object_centric_online",
+  "reveal_model": "models/inspection/object_centric_reveal.json",
+  "requirement_report": "models/inspection/evidence_requirement_report.json",
+  "requirement_calibration": "models/inspection/evidence_requirement_calibration.json",
+  "assistant_online_fusion_calibration": "models/inspection/online_requirement_fusion.json",
+  "requirement_beta": 0.25,
+  "requirement_strength": 1.0,
+  "requirement_temperature": 4.0,
+  "lambda_cost": 0.05,
+  "tau_view": 0.02,
+  "online_update_enabled": true,
+  "online_update_weight": 1.0,
+  "online_requirement_scale": 1.0,
+  "online_requirement_blend": 1.0,
+  "online_requirement_prior_strength": 0.001,
+  "online_gain_deadband": 0.05,
+  "session_destination_strength": 1.0,
+  "uses_candidate_view_images": false,
+  "uses_robot_utility_labels": false,
+  "training_signal": "assistant_uncertainty_resolution_traces"
+}

@@ -25,6 +25,15 @@ def select_evidence(
                 "runner_up": snapshot.runner_up,
                 "review_action": snapshot.review_action,
                 "review_reason": snapshot.review_reason,
+                "proposed_step": snapshot.proposed_step,
+                "active_claim": snapshot.active_claim,
+                "claim_state": snapshot.claim_state,
+                "claim_support": snapshot.claim_support,
+                "claim_contradiction": snapshot.claim_contradiction,
+                "claim_margin": snapshot.claim_margin,
+                "missing_evidence_roles": list(snapshot.missing_evidence_roles),
+                "acquisition_mode": snapshot.acquisition_mode,
+                "external_observation_recommended": snapshot.external_observation_recommended,
             },
         )
     if intent == "history_step":
@@ -62,6 +71,15 @@ def select_evidence(
                 "current_confidence": snapshot.step_confidence,
                 "next_step": next_step,
                 "missing_for_next": _missing_for_step(next_step, snapshot.object_counts, kb),
+                "proposed_step": snapshot.proposed_step,
+                "active_claim": snapshot.active_claim,
+                "claim_state": snapshot.claim_state,
+                "claim_support": snapshot.claim_support,
+                "claim_contradiction": snapshot.claim_contradiction,
+                "claim_admissible": snapshot.claim_admissible,
+                "missing_evidence_roles": list(snapshot.missing_evidence_roles),
+                "acquisition_mode": snapshot.acquisition_mode,
+                "external_observation_recommended": snapshot.external_observation_recommended,
             },
         )
     if intent == "object_presence":
@@ -82,6 +100,19 @@ def select_evidence(
         )
     if intent == "object_count":
         target = resolved.target_component
+        if not target:
+            counts = dict(snapshot.object_counts)
+            return AssistantEvidence(
+                intent=intent,
+                facts={
+                    "target_component": "",
+                    "display_name": "",
+                    "count": sum(int(value) for value in counts.values()),
+                    "object_counts": counts,
+                    "visible_objects": list(snapshot.visible_objects),
+                    "visible_display_names": [kb.component_display_name(item) for item in snapshot.visible_objects],
+                },
+            )
         return AssistantEvidence(
             intent=intent,
             facts={
@@ -123,8 +154,12 @@ def select_evidence(
                 "display_name": kb.component_display_name(resolved.target_component),
                 "visible": int(snapshot.object_counts.get(resolved.target_component, 0)) > 0,
                 "part_no": str(record.get("Part No.") or record.get("part_no") or "").strip(),
+                "color": str(record.get("Color") or record.get("color") or "").strip(),
                 "features": [str(item).strip() for item in (record.get("Key Features") or record.get("features") or []) if str(item).strip()],
+                "parts_list": [str(item).strip() for item in (record.get("Parts List") or record.get("parts_list") or []) if str(item).strip()],
                 "assembly_steps": [str(item).strip() for item in (record.get("Assembly Steps") or record.get("assembly_steps") or []) if str(item).strip()],
+                "tools": [str(item).strip() for item in (record.get("Tools and Equipment") or record.get("tools") or []) if str(item).strip()],
+                "maintenance": [str(item).strip() for item in (record.get("Maintenance and Care") or record.get("maintenance") or []) if str(item).strip()],
             },
         )
     if intent == "safety":
@@ -152,6 +187,12 @@ def select_evidence(
     if intent == "why_not_progressing":
         next_step = kb.next_step(snapshot.step_id)
         reasons: List[str] = []
+        if snapshot.claim_state == "contradicted":
+            reasons.append("active_claim_contradicted")
+        elif snapshot.claim_state == "insufficient":
+            reasons.append("active_claim_insufficient")
+        if not snapshot.claim_admissible:
+            reasons.append("claim_inadmissible")
         if snapshot.review_action:
             reasons.append(f"review:{snapshot.review_action}")
         if snapshot.step_confidence < 0.55:
@@ -178,6 +219,16 @@ def select_evidence(
                 "reasons": reasons,
                 "recent_steps": list(snapshot.recent_steps),
                 "recent_feedback": list(snapshot.recent_feedback),
+                "proposed_step": snapshot.proposed_step,
+                "active_claim": snapshot.active_claim,
+                "claim_state": snapshot.claim_state,
+                "claim_support": snapshot.claim_support,
+                "claim_contradiction": snapshot.claim_contradiction,
+                "claim_margin": snapshot.claim_margin,
+                "claim_admissible": snapshot.claim_admissible,
+                "missing_evidence_roles": list(snapshot.missing_evidence_roles),
+                "acquisition_mode": snapshot.acquisition_mode,
+                "external_observation_recommended": snapshot.external_observation_recommended,
             },
         )
     if intent == "capability":

@@ -1,0 +1,117 @@
+video:
+  stride: 3
+  write_annotated: false
+
+camera:
+  detection_conf: 0.10
+  detection_tta: false
+
+detection:
+  conf: 0.10
+  tta: false
+  use_builtin_tta: false
+
+geometry:
+  backend: moge
+  moge_model: Ruicheng/moge-2-vits-normal
+  use_fp16: true
+  resolution_level: 9
+  apply_mask: true
+
+temporal:
+  backend: counterfactual_bytetrack_lite
+  window: 3
+  min_confirmed_hits: 2
+  preserve_current_detections: true
+  identity_groups:
+    - [type_7_gear, type_3_gear]
+    - [type_2_gear, type_8_gear]
+    - [type_6_gearbox_housing, type_5_gearbox_housing]
+    - [type_6_gearbox_cover, type_5_gearbox_cover]
+
+track_evidence:
+  enabled: true
+
+scene_evidence:
+  enabled: true
+
+scene_graph:
+  enabled: true
+
+interaction:
+  enabled: true
+
+segmentation:
+  backend: none
+  fail_on_unavailable: false
+
+memory:
+  preset: session-only
+  enabled: true
+  session_enabled: true
+  long_term_enabled: false
+  auto_capture_enabled: true
+
+review:
+  enabled: true
+  evidence_prompt_enabled: false
+
+voice:
+  enabled: false
+
+speech:
+  enabled: false
+
+assistant:
+  enabled: false
+
+claim_verifier:
+  enabled: true
+  evidence_scorer_path: models/assistant/evidence_scorer.json
+  support_threshold: 0.35
+  contradiction_threshold: 0.35
+  counterfactual_margin: 0.0
+  ema_decay: 0.55
+  require_step_match_for_support: true
+  family_confirmation_frames: 2
+
+causal_evidence_bank:
+  enabled: true
+  proposal_model_path: models/assistant/step_proposal.joblib
+  triage_model_path: models/assistant/claim_triage.joblib
+  dinov2_repo: models/backbones/dinov2
+  device: cuda:0
+  load_encoder_on_start: true
+
+edge_runtime:
+  enabled: true
+  profiling_enabled: true
+  synchronize_cuda_for_timing: false
+  target_perception_ms: 100.0
+  target_answer_ms: 350.0
+  detection_interval_stable: 2
+  geometry_interval_stable: 6
+  retrieval_interval_stable: 3
+  memory_embedding_interval_stable: 6
+  visual_probe_width: 160
+  visual_change_threshold: 0.012
+  max_geometry_age: 12
+  max_memory_embedding_age: 12
+  cold_start_frames: 2
+  persistent_missing_patience: 2
+  min_epistemic_gain: 0.02
+  min_stage_evidence_value: 0.25
+  small_llm_intents:
+    - component_info
+    - object_relation
+    - safety
+    - troubleshooting
+
+ui:
+  enabled: false
+
+runlog:
+  save_dir: outputs/assistant/edge_realtime
+  detail_level: debug
+  live_detail_level: sparse
+  persist_temporal_tokens: true

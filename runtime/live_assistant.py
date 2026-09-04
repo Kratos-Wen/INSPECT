@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from collections import deque
 from pathlib import Path
@@ -10,10 +11,10 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from ..assistant import AssistantSnapshot, ContextualAssistant
+from ..assistant import AssistantSnapshot, ContextualAssistant, GroundedLLMResponder
 from ..assistant.types import FeedbackTimelineEvent, MemoryMatchSummary, StepTimelineEvent
 from ..components import AssistantSpeechService, JsonlCsvLogger, OpenCVRuntimeUI, VoiceCommandService
-from ..types import Detection, FeedbackEvent, RuntimeAction
+from ..core_types import Detection, FeedbackEvent, RuntimeAction
 from .pipeline import StepPipeline, build_default_pipeline
 
 
@@ -232,6 +233,139 @@ def _append_feedback_history(recent_feedback, frame_index: int, feedback: Feedba
     )
 
 
+class _RealtimeMetricsRecorder:
+    """Small live-run profiler used only when explicit realtime evaluation is enabled."""
+
+    def __init__(self, *, enabled: bool, run_dir: Path, window: int = 60, report_interval: int = 15) -> None:
+        self.enabled = bool(enabled)
+        self.window = max(2, int(window))
+        self.report_interval = max(1, int(report_interval))
+        self.raw_times = deque(maxlen=self.window)
+        self.proc_times = deque(maxlen=self.window)
+        self.read_latencies_ms: list[float] = []
+        self.process_latencies_ms: list[float] = []
+        self.loop_latencies_ms: list[float] = []
+        self._latest: dict[str, float] = {}
+        self._path = Path(run_dir) / "realtime_metrics.jsonl"
+        self._frames_path = Path(run_dir) / "frame_timestamps.jsonl"
+        self._handle = self._path.open("w", encoding="utf-8") if self.enabled else None
+        self._frame_handle = self._frames_path.open("w", encoding="utf-8") if self.enabled else None
+
+    def mark_raw_frame(self, frame_index: int, read_latency_ms: float, video_recorded: bool) -> None:
+        if not self.enabled:
+            return
+        now = time.perf_counter()
+        self.raw_times.append(now)
+        self.read_latencies_ms.append(float(read_latency_ms))
+        if self._frame_handle is not None:
+            self._frame_handle.write(
+                json.dumps(
+                    {
+                        "frame_index": int(frame_index),
+                        "perf_time": float(now),
+                        "read_latency_ms": float(read_latency_ms),
+                        "video_recorded": bool(video_recorded),
+                    }
+                )
+                + "\n"
+            )
+
+    def record_processed(
+        self,
+        *,
+        frame_index: int,
+        processed_index: int,
+        process_latency_ms: float,
+        loop_latency_ms: float,
+    ) -> dict[str, float]:
+        if not self.enabled:
+            return {}
+        self.proc_times.append(time.perf_counter())
+        self.process_latencies_ms.append(float(process_latency_ms))
+        self.loop_latencies_ms.append(float(loop_latency_ms))
+        record = {
+            "frame_index": int(frame_index),
+            "processed_index": int(processed_index),
+            "raw_fps": self._fps(self.raw_times),
+            "processed_fps": self._fps(self.proc_times),
+            "read_latency_ms": self._last(self.read_latencies_ms),
+            "process_latency_ms": float(process_latency_ms),
+            "loop_latency_ms": float(loop_latency_ms),
+            "mean_process_latency_ms": self._mean_tail(self.process_latencies_ms),
+            "mean_loop_latency_ms": self._mean_tail(self.loop_latencies_ms),
+        }
+        self._latest = {key: float(value) for key, value in record.items() if isinstance(value, (int, float))}
+        if self._handle is not None:
+            self._handle.write(json.dumps(record) + "\n")
+            if int(processed_index) % self.report_interval == 0:
+                self._handle.flush()
+        return self._latest
+
+    def status_line(self) -> str:
+        if not self.enabled or not self._latest:
+            return ""
+        return (
+            f"perf raw_fps={self._latest.get('raw_fps', 0.0):.1f} "
+            f"proc_fps={self._latest.get('processed_fps', 0.0):.1f} "
+            f"lat={self._latest.get('loop_latency_ms', 0.0):.1f}ms "
+            f"proc={self._latest.get('process_latency_ms', 0.0):.1f}ms"
+        )
+
+    def close(self) -> None:
+        if not self.enabled:
+            return
+        if self._handle is not None:
+            self._handle.flush()
+            self._handle.close()
+            self._handle = None
+        if self._frame_handle is not None:
+            self._frame_handle.flush()
+            self._frame_handle.close()
+            self._frame_handle = None
+        summary = {
+            "raw_frames": len(self.read_latencies_ms),
+            "processed_frames": len(self.process_latencies_ms),
+            "raw_fps_window": self._fps(self.raw_times),
+            "processed_fps_window": self._fps(self.proc_times),
+            "read_latency_ms": self._summary(self.read_latencies_ms),
+            "process_latency_ms": self._summary(self.process_latencies_ms),
+            "loop_latency_ms": self._summary(self.loop_latencies_ms),
+        }
+        (self._path.parent / "realtime_summary.json").write_text(
+            json.dumps(summary, indent=2),
+            encoding="utf-8",
+        )
+
+    def _mean_tail(self, values: list[float]) -> float:
+        tail = values[-self.window :]
+        return float(np.mean(tail)) if tail else 0.0
+
+    @staticmethod
+    def _last(values: list[float]) -> float:
+        return float(values[-1]) if values else 0.0
+
+    @staticmethod
+    def _fps(times: deque[float]) -> float:
+        if len(times) < 2:
+            return 0.0
+        elapsed = float(times[-1] - times[0])
+        if elapsed <= 1e-6:
+            return 0.0
+        return float((len(times) - 1) / elapsed)
+
+    @staticmethod
+    def _summary(values: list[float]) -> dict[str, float]:
+        if not values:
+            return {"mean": 0.0, "p50": 0.0, "p95": 0.0, "max": 0.0}
+        array = np.asarray(values, dtype=np.float32)
+        return {
+            "mean": float(np.mean(array)),
+            "p50": float(np.percentile(array, 50)),
+            "p95": float(np.percentile(array, 95)),
+            "max": float(np.max(array)),
+        }
+
+
 def _build_assistant_snapshot(
     frame_index: int,
     step_id: str,
@@ -249,6 +383,8 @@ def _build_assistant_snapshot(
     recent_feedback: Optional[list[FeedbackTimelineEvent]] = None,
     review_action: str = "",
     review_reason: str = "",
+    claim_decision=None,
+    compute_plan: Optional[dict[str, object]] = None,
 ) -> AssistantSnapshot:
     object_counts: dict[str, int] = {}
     for detection in fused_detections:
@@ -284,6 +420,19 @@ def _build_assistant_snapshot(
         memory_recalled=bool(memory_recalled),
         review_action=str(review_action),
         review_reason=str(review_reason),
+        proposed_step=str(getattr(claim_decision, "proposed_step", "")),
+        active_claim=str(getattr(claim_decision, "claim_id", "")),
+        claim_state=str(getattr(claim_decision, "state", "insufficient")),
+        claim_support=float(getattr(claim_decision, "support_score", 0.0)),
+        claim_contradiction=float(getattr(claim_decision, "contradiction_score", 0.0)),
+        claim_margin=float(getattr(claim_decision, "counterfactual_margin", 0.0)),
+        claim_admissible=bool(getattr(claim_decision, "admissible", True)),
+        missing_evidence_roles=list(getattr(claim_decision, "missing_roles", ()) or ()),
+        product_family=str(getattr(claim_decision, "product_family", "")),
+        acquisition_mode=str((compute_plan or {}).get("acquisition_mode", "monitor")),
+        external_observation_recommended=bool(
+            (compute_plan or {}).get("external_observation_recommended", False)
+        ),
     )
 
 
@@ -306,13 +455,19 @@ class LiveAssistantRunner:
         self.assistant = assistant
         self.camera_index = int(camera_index)
 
-    def run(self, camera_index: Optional[int] = None) -> Path:
+    def run(self, camera_index: Optional[int] = None, eval_realtime: Optional[bool] = None) -> Path:
         """Run the live assistant on the requested camera index."""
 
         index = self.camera_index if camera_index is None else int(camera_index)
         source_path = Path(f"camera_{index}_live.mp4")
         logger = JsonlCsvLogger(self.pipeline.runlog_root, source_path)
         self.pipeline.prepare_run(logger, source_uri=f"camera://{index}")
+        metrics = _RealtimeMetricsRecorder(
+            enabled=bool(self.pipeline.config.runlog.eval_realtime if eval_realtime is None else eval_realtime),
+            run_dir=logger.run_dir,
+            window=self.pipeline.config.runlog.eval_window,
+            report_interval=self.pipeline.config.runlog.eval_report_interval,
+        )
         self.pipeline.ops_tracker.update(
             status="Doing",
             frame_index=0,
@@ -329,6 +484,7 @@ class LiveAssistantRunner:
             self.pipeline.memory_manager.close()
             self.pipeline.event_bus.close()
             self.pipeline.ops_tracker.close()
+            metrics.close()
             logger.close()
             raise
 
@@ -366,6 +522,8 @@ class LiveAssistantRunner:
         recent_steps = deque(maxlen=6)
         recent_feedback = deque(maxlen=6)
         read_failures = 0
+        eval_video_writer: Optional[cv2.VideoWriter] = None
+        eval_video_path = logger.run_dir / "live_capture.mp4"
 
         try:
             while running:
@@ -384,7 +542,9 @@ class LiveAssistantRunner:
                     time.sleep(0.05)
                     continue
 
+                read_start = time.perf_counter()
                 ok, frame_bgr = capture.read()
+                read_end = time.perf_counter()
                 if not ok or frame_bgr is None or getattr(frame_bgr, "size", 0) == 0:
                     read_failures += 1
                     self.pipeline.event_bus.emit(
@@ -429,19 +589,55 @@ class LiveAssistantRunner:
                     )
                     read_failures = 0
                 frame_index += 1
+                video_recorded = False
+                if metrics.enabled:
+                    if eval_video_writer is None:
+                        height, width = frame_bgr.shape[:2]
+                        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                        eval_video_writer = cv2.VideoWriter(
+                            str(eval_video_path),
+                            fourcc,
+                            float(self.pipeline.config.camera.fps),
+                            (int(width), int(height)),
+                        )
+                        self.pipeline.event_bus.emit(
+                            "runtime.eval_video_started",
+                            {"path": str(eval_video_path), "width": int(width), "height": int(height)},
+                            frame_index=frame_index,
+                        )
+                    if eval_video_writer is not None and eval_video_writer.isOpened():
+                        eval_video_writer.write(frame_bgr)
+                        video_recorded = True
+                metrics.mark_raw_frame(frame_index, (read_end - read_start) * 1000.0, video_recorded)
                 if frame_index % self.pipeline.config.video.stride != 0:
                     if last_canvas is not None:
                         self.ui.render(last_canvas, status_lines=last_status_lines, focus_crop=last_focus)
                     continue
 
                 processed_index += 1
+                process_start = time.perf_counter()
                 processed = self.pipeline.process_frame(
                     frame_bgr=frame_bgr,
                     frame_index=frame_index,
                     prev_step_for_transition=prev_step_for_transition,
                     source_kind="camera",
                 )
+                process_end = time.perf_counter()
                 logger.log_iteration(self.pipeline.build_iteration_payload(processed_index, processed, source_kind="camera"))
+
+                refined_reply = self.assistant.poll_refinement()
+                if refined_reply is not None:
+                    last_assistant_answer = refined_reply.answer
+                    self.pipeline.event_bus.emit(
+                        "assistant.refinement",
+                        {
+                            "route": refined_reply.route,
+                            "answer": refined_reply.answer,
+                            "llm_route": refined_reply.evidence.get("llm_route", "async_refined"),
+                        },
+                        frame_index=frame_index,
+                    )
+                    print(f"[Assistant refinement] {refined_reply.answer}")
 
                 fused_detections = processed.fused_detections
                 relevant_detections = processed.relevant_detections
@@ -476,6 +672,8 @@ class LiveAssistantRunner:
                         memory_matches=_summarize_memory_matches(memory_recall),
                         recent_steps=list(recent_steps),
                         recent_feedback=list(recent_feedback),
+                        claim_decision=processed.claim_decision,
+                        compute_plan=processed.compute_plan,
                     )
                     while pending_query_actions:
                         query_action = pending_query_actions.pop(0)
@@ -501,6 +699,15 @@ class LiveAssistantRunner:
                         "review=none",
                         "evidence=missing",
                     ]
+                    metrics.record_processed(
+                        frame_index=frame_index,
+                        processed_index=processed_index,
+                        process_latency_ms=(process_end - process_start) * 1000.0,
+                        loop_latency_ms=(time.perf_counter() - read_start) * 1000.0,
+                    )
+                    perf_line = metrics.status_line()
+                    if perf_line:
+                        last_status_lines.append(perf_line)
                     last_transcript = self.voice.last_transcript()
                     if last_transcript:
                         last_status_lines.append(f'voice=\"{last_transcript[:72]}\"')
@@ -514,8 +721,9 @@ class LiveAssistantRunner:
                     pending_actions=pending_feedback_actions,
                     fused_step=fusion_result.step_id,
                 )
-                display_step = fusion_result.step_id
-                allow_auto_capture = True
+                display_step = self.pipeline.display_step(processed, prev_step_for_transition)
+                claim_supported = processed.claim_decision is None or processed.claim_decision.state == "supported"
+                allow_auto_capture = bool(claim_supported)
                 transition_step: Optional[str] = None
                 pending_reason = review_decision.reason if review_decision is not None else "stable_accept"
                 step_history_source = ""
@@ -553,6 +761,8 @@ class LiveAssistantRunner:
                     )
                     display_step = feedback.label
                     prev_step_for_transition = feedback.label
+                    if self.pipeline.claim_verifier is not None:
+                        self.pipeline.claim_verifier.confirm_step(feedback.label)
                     step_history_source = "feedback_accept" if feedback.accepted else "feedback_correct"
                     self.pipeline.ops_tracker.update(
                         status="Next",
@@ -610,9 +820,14 @@ class LiveAssistantRunner:
                             )
                             display_step = operator_feedback.label
                             prev_step_for_transition = operator_feedback.label
+                            if self.pipeline.claim_verifier is not None:
+                                self.pipeline.claim_verifier.confirm_step(operator_feedback.label)
                             step_history_source = "feedback_accept" if operator_feedback.accepted else "feedback_correct"
                         else:
-                            allow_auto_capture = review_decision is None or review_decision.action == "approve"
+                            allow_auto_capture = bool(
+                                claim_supported
+                                and (review_decision is None or review_decision.action == "approve")
+                            )
                     elif (
                         review_decision is not None
                         and review_decision.action == "prefer_candidate"
@@ -650,14 +865,14 @@ class LiveAssistantRunner:
                             )
                         )
                         display_step = reviewer_feedback.label
-                        transition_step = reviewer_feedback.label
+                        transition_step = reviewer_feedback.label if claim_supported else None
                         allow_auto_capture = False
                         step_history_source = "review_feedback"
                     elif review_decision is not None and review_decision.action in {"hold", "request_human"}:
                         allow_auto_capture = False
 
                     if feedback is None:
-                        if allow_auto_capture:
+                        if allow_auto_capture and stable:
                             self.pipeline.memory_manager.record_auto(
                                 memory_observation,
                                 fusion_result=fusion_result,
@@ -672,15 +887,22 @@ class LiveAssistantRunner:
                                 reason=pending_reason,
                                 review_action=review_decision.action if review_decision is not None else "",
                             )
-                        elif allow_auto_capture:
+                        elif allow_auto_capture and stable:
                             prev_step_for_transition = fusion_result.step_id
-                            if stable:
-                                step_history_source = "stable_auto"
+                            step_history_source = "stable_auto"
                             self.pipeline.ops_tracker.update(
-                                status="Next" if stable else "Doing",
+                                status="Next",
                                 frame_index=frame_index,
                                 step_id=fusion_result.step_id,
-                                reason="stable_auto" if stable else "tracking",
+                                reason="stable_auto",
+                                review_action=review_decision.action if review_decision is not None else "",
+                            )
+                        elif allow_auto_capture:
+                            self.pipeline.ops_tracker.update(
+                                status="Doing",
+                                frame_index=frame_index,
+                                step_id=fusion_result.step_id,
+                                reason="tracking_candidate",
                                 review_action=review_decision.action if review_decision is not None else "",
                             )
                         else:
@@ -719,6 +941,8 @@ class LiveAssistantRunner:
                     recent_feedback=list(recent_feedback),
                     review_action=review_decision.action if review_decision is not None else "",
                     review_reason=review_decision.reason if review_decision is not None else "",
+                    claim_decision=processed.claim_decision,
+                    compute_plan=processed.compute_plan,
                 )
                 while pending_query_actions:
                     query_action = pending_query_actions.pop(0)
@@ -744,6 +968,15 @@ class LiveAssistantRunner:
                     self.voice.status_text(),
                     f"review={review_decision.action if review_decision is not None else 'none'}",
                 ]
+                metrics.record_processed(
+                    frame_index=frame_index,
+                    processed_index=processed_index,
+                    process_latency_ms=(process_end - process_start) * 1000.0,
+                    loop_latency_ms=(time.perf_counter() - read_start) * 1000.0,
+                )
+                perf_line = metrics.status_line()
+                if perf_line:
+                    last_status_lines.append(perf_line)
                 if read_failures:
                     last_status_lines.append(f"camera_retry={read_failures}")
                 last_transcript = self.voice.last_transcript()
@@ -755,10 +988,13 @@ class LiveAssistantRunner:
                 self.ui.render(last_canvas, status_lines=last_status_lines, focus_crop=last_focus)
         finally:
             capture.release()
+            if eval_video_writer is not None:
+                eval_video_writer.release()
             self.voice.stop()
             self.speech.stop()
             self.ui.close()
             self.pipeline.finalize_run(logger, source_uri=f"camera://{index}")
+            metrics.close()
 
         return logger.run_dir
 
@@ -796,6 +1032,7 @@ class LiveAssistantRunner:
                 self.ui.toggle_help()
             elif action.action == "voice_capture":
                 if self.pipeline.config.speech.interrupt_on_voice_input:
+                    self.assistant.interrupt()
                     self.speech.interrupt()
                 self.voice.trigger_manual_capture()
             elif action.action == "toggle_voice_mute":
@@ -810,6 +1047,7 @@ class LiveAssistantRunner:
                 pending_feedback_actions.append(action)
             elif action.action == "transcript":
                 if self.pipeline.config.speech.interrupt_on_voice_input:
+                    self.assistant.interrupt()
                     self.speech.interrupt()
                 pending_query_actions.append(action)
         return running, paused, force_feedback
@@ -838,6 +1076,7 @@ def build_live_assistant(
     device: str,
     state_path: Optional[Path],
     interactive: bool,
+    feedback_provider_override=None,
     camera_index: Optional[int] = None,
 ) -> LiveAssistantRunner:
     """Build a live camera assistant from the shared modular components."""
@@ -850,6 +1089,7 @@ def build_live_assistant(
         device=device,
         state_path=state_path,
         interactive=interactive,
+        feedback_provider_override=feedback_provider_override,
     )
     ui = OpenCVRuntimeUI(
         enabled=config.ui.enabled,
@@ -907,6 +1147,32 @@ def build_live_assistant(
         history_limit=config.assistant.history_limit,
         relation_limit=config.assistant.relation_limit,
         overlay_chars=config.assistant.overlay_chars,
+        llm=GroundedLLMResponder(
+            enabled=config.assistant.llm_enabled,
+            provider=config.assistant.llm_provider,
+            model_id=config.assistant.llm_model_id,
+            model_path=config.assistant.llm_model_path,
+            device_map=config.assistant.llm_device_map,
+            torch_dtype=config.assistant.llm_torch_dtype,
+            max_new_tokens=config.assistant.llm_max_new_tokens,
+            temperature=config.assistant.llm_temperature,
+            top_p=config.assistant.llm_top_p,
+            timeout_sec=config.assistant.llm_timeout_sec,
+            history_turns=config.assistant.llm_history_turns,
+            max_context_chars=config.assistant.llm_max_context_chars,
+            answer_word_limit=config.assistant.llm_answer_word_limit,
+            streaming=config.assistant.llm_streaming,
+            load_on_start=config.assistant.llm_load_on_start,
+            fallback_to_template=config.assistant.llm_fallback_to_template,
+            grounding_guard_enabled=config.assistant.llm_grounding_guard_enabled,
+            trust_remote_code=config.assistant.llm_trust_remote_code,
+        ),
+        llm_async_refine=config.assistant.llm_async_refine,
+        llm_intents=(
+            config.edge_runtime.small_llm_intents
+            if config.edge_runtime.enabled
+            else None
+        ),
     )
     return LiveAssistantRunner(
         pipeline=pipeline,

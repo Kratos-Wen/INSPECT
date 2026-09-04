@@ -6,7 +6,7 @@ from typing import Iterable, List, Optional
 
 import numpy as np
 
-from ..types import SegmentationMask
+from ..core_types import SegmentationMask
 
 
 def _slug(value: object) -> str:

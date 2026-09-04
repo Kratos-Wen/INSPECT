@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
 
-from ..types import Detection
+from ..core_types import Detection
 
 
 class KnowledgeBase:
@@ -60,7 +60,15 @@ class KnowledgeBase:
 
         canonical = self.alias_map.get(str(name).strip().lower(), str(name).strip().lower())
         record = self.component_records.get(canonical, {})
-        return str(record.get("name", canonical)).strip() or canonical
+        display = (
+            record.get("display_name")
+            or record.get("Display Name")
+            or record.get("label")
+            or record.get("Label")
+            or record.get("name")
+            or canonical
+        )
+        return str(display).strip() or canonical
 
     def next_step(self, step_id: str) -> str:
         """Return the next workflow step, or the current one if it is terminal."""

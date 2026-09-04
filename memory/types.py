@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-from ..types import StepPrediction
+from ..core_types import StepPrediction
 
 Signature = Tuple[Tuple[str, int], ...]
 

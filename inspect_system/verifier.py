@@ -36,6 +36,8 @@ def observation_evidence_keys(observation: RobotObservation) -> List[str]:
         if len(item) < 3:
             continue
         subject, predicate, obj = item[:3]
+        if _slug(subject) == _slug(obj):
+            continue
         pred = _slug(predicate)
         evidence.add(f"relation:{_slug(subject)}:{pred}:{_slug(obj)}")
         evidence.add(f"relation_type:{pred}")
@@ -48,7 +50,7 @@ def load_robot_observations(path: Path) -> List[RobotObservation]:
     """Load robot observations from JSONL or a JSON list."""
 
     path = Path(path)
-    text = path.read_text(encoding="utf-8").strip()
+    text = path.read_text(encoding="utf-8-sig").strip()
     if not text:
         return []
     if text.startswith("["):

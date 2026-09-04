@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Robot Inspection Annotation Studio</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand-block">
+      <div class="brand-mark" aria-hidden="true">RI</div>
+      <div>
+        <h1>Robot Inspection Annotation Studio</h1>
+        <p id="projectSubtitle">Loading project...</p>
+      </div>
+    </div>
+    <div class="header-progress" aria-label="Annotation progress">
+      <div class="progress-copy">
+        <span id="progressText">0 / 0 views complete</span>
+        <strong id="progressPercent">0%</strong>
+      </div>
+      <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
+    </div>
+    <div class="header-actions">
+      <label class="annotator-field">
+        <span>Annotator</span>
+        <input id="annotatorInput" type="text" autocomplete="off" placeholder="Initials or ID">
+      </label>
+      <button id="qualityButton" class="icon-text-button neutral" title="Open quality review">
+        <span aria-hidden="true">&#9888;</span><span id="qualityCount">0 issues</span>
+      </button>
+      <a class="icon-text-button neutral" href="/api/export" title="Export annotations and audit log">
+        <span aria-hidden="true">&#8681;</span><span>Export</span>
+      </a>
+      <button id="shortcutButton" class="icon-button neutral" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">?</button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <aside class="queue-panel" aria-label="Annotation queue">
+      <div class="queue-toolbar">
+        <div class="search-field">
+          <span aria-hidden="true">&#9906;</span>
+          <input id="searchInput" type="search" placeholder="Search setup or claim">
+        </div>
+        <select id="statusFilter" aria-label="Filter by status">
+          <option value="all">All status</option>
+          <option value="unstarted">Unstarted</option>
+          <option value="in_progress">In progress</option>
+          <option value="complete">Complete</option>
+          <option value="review">Needs review</option>
+        </select>
+      </div>
+      <div class="queue-summary">
+        <span id="queueResultCount">0 setups</span>
+        <button id="nextIncompleteButton" class="text-button">Next incomplete</button>
+      </div>
+      <div id="setupQueue" class="setup-queue"></div>
+    </aside>
+
+    <section class="workspace">
+      <div class="context-bar">
+        <div>
+          <div class="context-eyebrow">
+            <span id="setupLabel">Setup</span>
+            <span id="splitBadge" class="badge">split</span>
+          </div>
+          <h2 id="claimText">Select a setup</h2>
+          <p id="claimId">Claim ID</p>
+        </div>
+        <div class="workflow-toggle" role="tablist" aria-label="Annotation workflow">
+          <button id="viewTab" class="workflow-tab active" role="tab" aria-selected="true">View evidence</button>
+          <button id="setupTab" class="workflow-tab" role="tab" aria-selected="false">Setup truth</button>
+        </div>
+        <div class="context-actions">
+          <label class="switch-label" title="Hide setup truth while judging individual views">
+            <input id="blindModeToggle" type="checkbox" checked>
+            <span class="switch"></span>
+            Blind view mode
+          </label>
+          <button id="prevSetupButton" class="icon-button neutral" title="Previous setup (K)" aria-label="Previous setup">&#8593;</button>
+          <button id="nextSetupButton" class="icon-button neutral" title="Next setup (J)" aria-label="Next setup">&#8595;</button>
+        </div>
+      </div>
+
+      <div id="viewWorkflow" class="view-workflow">
+        <div id="viewStrip" class="view-strip" aria-label="Fixed lattice views"></div>
+
+        <div class="image-toolbar">
+          <div class="tool-group" role="group" aria-label="Geometry tools">
+            <button class="tool-button active" data-tool="pan" title="Inspect image">Inspect</button>
+            <button class="tool-button" data-tool="bbox" title="Draw bounding box (B)">Box</button>
+            <button class="tool-button" data-tool="point" title="Add keypoint (P)">Point</button>
+            <button class="tool-button" data-tool="erase" title="Remove nearest annotation (E)">Erase</button>
+          </div>
+          <div class="geometry-controls">
+            <label>Label
+              <select id="geometryLabel"></select>
+            </label>
+            <label class="switch-label compact">
+              <input id="overlayToggle" type="checkbox" checked>
+              <span class="switch"></span>
+              Overlay
+            </label>
+            <button id="undoGeometryButton" class="icon-button neutral" title="Undo geometry">&#8630;</button>
+          </div>
+        </div>
+
+        <div id="imageStage" class="image-stage">
+          <img id="activeImage" alt="Current fixed-lattice view" draggable="false">
+          <canvas id="annotationCanvas"></canvas>
+          <div id="imageEmptyState" class="image-empty-state">Select a setup to begin</div>
+          <div id="imageStatus" class="image-status"></div>
+        </div>
+
+        <div class="bottom-status-bar">
+          <div id="saveState" class="save-state">No unsaved changes</div>
+          <div class="navigation-hint"><kbd>[</kbd><kbd>]</kbd> views <kbd>J</kbd><kbd>K</kbd> setups <kbd>Enter</kbd> complete &amp; next</div>
+        </div>
+      </div>
+
+      <div id="setupWorkflow" class="setup-workflow hidden">
+        <div class="setup-truth-banner">
+          <strong>Physical ground truth</strong>
+          <span>Enter once per physical setup. This information is hidden during blind per-view annotation.</span>
+          <button id="applyPrefillButton" class="text-button">Apply metadata prefill</button>
+        </div>
+        <div id="setupForm" class="setup-form"></div>
+      </div>
+    </section>
+
+    <aside id="inspectorPanel" class="inspector-panel" aria-label="View annotation inspector">
+      <div class="inspector-heading">
+        <div>
+          <span id="activeViewLabel" class="context-eyebrow">View</span>
+          <h3>Claim evidence</h3>
+        </div>
+        <span id="viewWorkflowBadge" class="workflow-badge draft">Draft</span>
+      </div>
+
+      <section class="inspector-section quick-section">
+        <div class="section-heading">
+          <h4>Quick decisions</h4>
+          <span>One click sets utility and epistemic state</span>
+        </div>
+        <div class="quick-grid">
+          <button class="quick-action utility-zero" data-template="none"><strong>0</strong><span>No evidence</span></button>
+          <button class="quick-action utility-one" data-template="partial"><strong>1</strong><span>Partial</span></button>
+          <button class="quick-action decision-support" data-template="supported"><strong>2</strong><span>Supported</span></button>
+          <button class="quick-action decision-contradict" data-template="contradicted"><strong>2</strong><span>Contradicted</span></button>
+        </div>
+      </section>
+
+      <section class="inspector-section">
+        <div class="section-heading"><h4>Oracle utility</h4><span>Evidence in this view only</span></div>
+        <div id="utilityControl" class="segmented-control three">
+          <button data-value="0"><strong>0</strong><span>None</span></button>
+          <button data-value="1"><strong>1</strong><span>Partial</span></button>
+          <button data-value="2"><strong>2</strong><span>Decidable</span></button>
+        </div>
+      </section>
+
+      <section class="inspector-section">
+        <div class="section-heading"><h4>Observable decision</h4><span>Do not use physical setup knowledge</span></div>
+        <div id="decisionControl" class="segmented-control decision-control">
+          <button data-value="supported">Supported</button>
+          <button data-value="contradicted">Contradicted</button>
+          <button data-value="insufficient">Insufficient</button>
+        </div>
+      </section>
+
+      <section class="inspector-section">
+        <div class="section-heading">
+          <h4>Evidence roles</h4>
+          <button id="markMissingButton" class="text-button">Mark remaining required as missing</button>
+        </div>
+        <p class="cycle-help">Click each role to cycle: unrated &rarr; visible &rarr; missing.</p>
+        <div id="roleGrid" class="role-grid"></div>
+      </section>
+
+      <details class="inspector-section detail-section" open>
+        <summary>Objects and relations</summary>
+        <div class="detail-content">
+          <label class="field-label">Occlusion
+            <select id="occlusionSelect">
+              <option value="">Not rated</option>
+              <option value="none">None</option>
+              <option value="mild">Mild</option>
+              <option value="severe">Severe</option>
+            </select>
+          </label>
+          <label class="checkbox-field"><input id="identityAmbiguousCheckbox" type="checkbox"> Identity remains ambiguous</label>
+          <div class="subsection-label">Object visibility</div>
+          <div id="objectVisibilityGrid" class="compact-grid"></div>
+          <div class="subsection-label">Relations</div>
+          <div id="relationGrid" class="relation-grid"></div>
+        </div>
+      </details>
+
+      <details class="inspector-section detail-section">
+        <summary>Counterfactual and rationale</summary>
+        <div class="detail-content">
+          <label class="field-label">Decisive counterfactual
+            <input id="counterfactualInput" type="text" placeholder="e.g. wrong identity or incomplete insertion">
+          </label>
+          <label class="field-label">Short rationale
+            <textarea id="rationaleInput" rows="3" placeholder="State only the evidence visible or missing in this view."></textarea>
+          </label>
+        </div>
+      </details>
+
+      <div id="validationPanel" class="validation-panel">
+        <strong>Quality checks</strong>
+        <ul id="validationList"></ul>
+      </div>
+
+      <div class="inspector-footer">
+        <button id="saveDraftButton" class="command-button secondary">Save draft</button>
+        <button id="completeNextButton" class="command-button primary">Complete &amp; next</button>
+      </div>
+    </aside>
+  </main>
+
+  <dialog id="shortcutDialog">
+    <div class="dialog-heading"><h3>Keyboard shortcuts</h3><button class="icon-button neutral" data-close-dialog aria-label="Close">&#10005;</button></div>
+    <div class="shortcut-grid">
+      <kbd>0</kbd><span>No evidence / insufficient</span>
+      <kbd>1</kbd><span>Partial / insufficient</span>
+      <kbd>2</kbd><span>Fully decidable</span>
+      <kbd>S</kbd><span>Supported</span>
+      <kbd>C</kbd><span>Contradicted</span>
+      <kbd>I</kbd><span>Insufficient</span>
+      <kbd>[ / ]</kbd><span>Previous / next view</span>
+      <kbd>K / J</kbd><span>Previous / next setup</span>
+      <kbd>B</kbd><span>Bounding-box tool</span>
+      <kbd>P</kbd><span>Keypoint tool</span>
+      <kbd>E</kbd><span>Erase geometry</span>
+      <kbd>Ctrl+S</kbd><span>Save draft</span>
+      <kbd>Enter</kbd><span>Complete and move next</span>
+    </div>
+  </dialog>
+
+  <dialog id="qualityDialog" class="wide-dialog">
+    <div class="dialog-heading"><h3>Quality review</h3><button class="icon-button neutral" data-close-dialog aria-label="Close">&#10005;</button></div>
+    <p>Issues are derived from annotation consistency checks. Selecting an issue opens the corresponding setup and view.</p>
+    <div id="qualityIssueList" class="quality-issue-list"></div>
+  </dialog>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

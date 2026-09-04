@@ -22,6 +22,8 @@ detection:
   tta: true
   nms_iou: 0.4
   use_builtin_tta: false
+  track_class_smoothing_alpha: 0.82
+  track_class_switch_margin: 0.12
   min_box_area_ratio: 0.0002
   max_box_area_ratio: 0.60
   max_aspect_ratio: 6.0
@@ -31,14 +33,15 @@ detection:
   dedupe_iou: 0.65
 
 geometry:
-  backend: "gradient"
+  backend: "moge"
   moge_model: "Ruicheng/moge-2-vits-normal"
   use_fp16: true
   resolution_level: 9
   apply_mask: true
 
 temporal:
-  backend: "bytetrack_lite"
+  backend: "ultralytics_botsort"  # official Ultralytics BoT-SORT; fallback option: "bytetrack_lite"
+  tracker_config: "botsort.yaml"
   window: 3
   iou_thr: 0.35
   track_high_thresh: 0.32
@@ -49,10 +52,28 @@ temporal:
   min_confirmed_hits: 2
   smooth_alpha: 0.70
 
+track_evidence:
+  enabled: true
+  stable_hits: 3
+  stable_confidence: 0.35
+  role_track_min_quality: 0.50
+  motion_px_threshold: 4.0
+  max_tracks: 24
+  prefer_stable_tracks_for_rules: true
+  prefer_stable_tracks_for_stability: true
+  fallback_to_confirmed_tracks: true
+
+scene_evidence:
+  enabled: true
+  relation_change_memory: 24
+  max_objects: 32
+  max_relations: 48
+  max_changes: 32
+
 depth_context:
   tau_p: 80.0
   tau_d: 0.12
-  use_relevant_for_rules: true
+  use_relevant_for_rules: false
 
 stability:
   stable_n: 5
@@ -89,7 +110,7 @@ segmentation:
 
 experts:
   steps: ["S1", "S2", "S3", "S4"]
-  gallery_root: ""  # leave empty to auto-discover mica_step_modular/gallery or test/{after,before}_online
+  gallery_root: ""  # leave empty to auto-discover repository gallery or test/{after,before}_online
   gallery_exts: [".jpg", ".jpeg", ".png", ".bmp"]
   gallery_embed: "hybrid-4"
   retrieval_topk: 5
@@ -148,8 +169,8 @@ ops:
 
 ui:
   enabled: true
-  window_name: "MICA Live"
-  focus_window_name: "MICA Focus"
+  window_name: "INSPECT Trace Engine"
+  focus_window_name: "INSPECT Focus"
   show_focus: true
   show_help: true
   key_quit: "q"
@@ -164,9 +185,9 @@ voice:
   mode: "manual"  # switch to always_on for a continuous voice assistant
   backend: "auto"  # prefers faster_whisper, falls back to transformers if CTranslate2 is unstable
   model_name: "distil-small.en"
-  cache_dir: "F:/Hackathon/ACVR/mica_step_modular/.cache/stt"
+  cache_dir: ".cache/stt"
   language: "en"
-  wake_words: ["mica", "assistant"]
+  wake_words: ["inspect", "assistant"]
   require_wake_word_in_always_on: true
   command_max_tokens: 6
   compute_type: "auto"
@@ -181,16 +202,16 @@ voice:
 
 speech:
   enabled: true
-  backend: "auto"  # switch to "kokoro" to use the isolated Kokoro-82M sidecar
+  backend: "kokoro"
   rate: 1
   volume: 1.0
   voice_name: ""
-  kokoro_model_path: "F:/Hackathon/ACVR/mica_step_modular/models/kokoro-82m"
+  kokoro_model_path: "models/kokoro-82m"
   kokoro_voices_path: ""  # optional; auto-discovered when empty
   kokoro_voice: "af_sarah"
   kokoro_language: "en-us"
   kokoro_speed: 1.0
-  kokoro_python_path: "F:/Hackathon/ACVR/mica_step_modular/.venv_kokoro/Scripts/python.exe"
+  kokoro_python_path: ""  # empty uses the current Python interpreter
   dedupe_window_sec: 1.5
   drop_pending_on_new: true
   interrupt_on_voice_input: true
@@ -200,6 +221,29 @@ assistant:
   history_limit: 12
   relation_limit: 3
   overlay_chars: 120
+  # Grounded dialogue layer. The LLM only rewrites/explains structured
+  # verifier outputs; it does not decide procedural state.
+  llm_enabled: true
+  llm_provider: "transformers"
+  llm_model_id: "Qwen/Qwen3-0.6B"
+  llm_model_path: "models/qwen3-0.6b"
+  llm_device_map: "auto"
+  llm_torch_dtype: "auto"
+  llm_max_new_tokens: 48
+  llm_temperature: 0.0
+  llm_top_p: 0.9
+  llm_timeout_sec: 2.0
+  llm_history_turns: 3
+  llm_max_context_chars: 2400
+  llm_answer_word_limit: 40
+  llm_streaming: true
+  # Return a grounded structured answer immediately and refine it off the
+  # critical interaction path when a local LLM is enabled.
+  llm_async_refine: true
+  llm_load_on_start: false
+  llm_fallback_to_template: true
+  llm_grounding_guard_enabled: true
+  llm_trust_remote_code: true
 
 temporal_step:
   enabled: true
@@ -216,11 +260,11 @@ temporal_step:
   retrieval_score_weight: 0.25
   memory_score_weight: 0.15
   graph_transition_penalty: 0.18
-  graph_requirement_bonus: 0.10
-  graph_requirement_penalty: 0.12
+  graph_requirement_bonus: 0.03
+  graph_requirement_penalty: 0.04
   graph_forbid_penalty: 0.16
-  graph_relation_bonus: 0.04
-  graph_relation_penalty: 0.06
+  graph_relation_bonus: 0.12
+  graph_relation_penalty: 0.10
 
 online_fusion:
   state_gate: 0.5
@@ -257,17 +301,11 @@ online_fusion:
     S3: ["S2", "S3", "S4"]
     S4: ["S3", "S4"]
 
-corl_ablation:
-  gru_checkpoint: ""
-  gru_aux_checkpoint: ""
-  gru_agg_checkpoint: ""
-  gru_agg_offline_gate_checkpoint: ""
-  gru_agg_offline_gate_context_gate_checkpoint: ""
-  full_online_adapt_checkpoint: ""
-  full_online_adapt_context_gate_checkpoint: ""
-
 runlog:
   save_dir: "runs_modular"
   detail_level: "debug"
   live_detail_level: "sparse"
   persist_temporal_tokens: true
+  eval_realtime: false
+  eval_window: 60
+  eval_report_interval: 15

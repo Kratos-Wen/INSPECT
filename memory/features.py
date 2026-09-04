@@ -8,7 +8,7 @@ from typing import Dict, Iterable, List, Optional
 
 import numpy as np
 
-from ..types import Detection, GeometryFrame, SceneGraphFrame, StepPrediction
+from ..core_types import Detection, GeometryFrame, SceneGraphFrame, StepPrediction
 from .types import MemoryObservation, Signature
 
 
@@ -55,12 +55,17 @@ def summarize_geometry(
     if valid_mask is None:
         valid_mask = np.ones(depth.shape[:2], dtype=bool)
     valid_mask = valid_mask.astype(bool)
-    valid_depth = depth[valid_mask]
-    if valid_depth.size == 0:
-        valid_depth = depth.reshape(-1)
-
-    depth_mean = float(np.mean(valid_depth))
-    depth_std = float(np.std(valid_depth))
+    cached_mean = geometry.extras.get("depth_mean")
+    cached_std = geometry.extras.get("depth_std")
+    if cached_mean is None or cached_std is None:
+        valid_depth = depth[valid_mask]
+        if valid_depth.size == 0:
+            valid_depth = depth.reshape(-1)
+        depth_mean = float(np.mean(valid_depth))
+        depth_std = float(np.std(valid_depth))
+    else:
+        depth_mean = float(cached_mean)
+        depth_std = float(cached_std)
     nearest_depth = depth_mean
     nearest_area = 0.0
 
@@ -80,7 +85,7 @@ def summarize_geometry(
         nearest_area = float((x2 - x1) * (y2 - y1) / max(1, width * height))
 
     return {
-        "valid_ratio": float(np.mean(valid_mask)),
+        "valid_ratio": float(geometry.extras.get("valid_ratio", np.mean(valid_mask)) or 0.0),
         "depth_mean": depth_mean,
         "depth_std": depth_std,
         "nearest_depth": nearest_depth,

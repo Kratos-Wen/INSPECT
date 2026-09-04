@@ -1,0 +1,66 @@
+video:
+  stride: 3
+  write_annotated: false
+
+detection:
+  conf: 0.10
+  tta: false
+  use_builtin_tta: false
+
+geometry:
+  backend: moge
+  moge_model: Ruicheng/moge-2-vits-normal
+  use_fp16: true
+  resolution_level: 9
+  apply_mask: true
+
+temporal:
+  backend: ultralytics_botsort
+  tracker_config: botsort.yaml
+  window: 3
+  min_confirmed_hits: 2
+
+track_evidence:
+  enabled: true
+
+scene_evidence:
+  enabled: true
+
+scene_graph:
+  enabled: true
+
+interaction:
+  enabled: true
+
+segmentation:
+  backend: none
+  fail_on_unavailable: false
+
+memory:
+  preset: session-only
+  enabled: true
+  session_enabled: true
+  long_term_enabled: false
+  auto_capture_enabled: true
+
+review:
+  enabled: true
+  evidence_prompt_enabled: false
+
+voice:
+  enabled: false
+
+speech:
+  enabled: false
+
+assistant:
+  enabled: false
+
+ui:
+  enabled: false
+
+runlog:
+  save_dir: outputs/assistant/continuous_replay
+  detail_level: debug
+  live_detail_level: sparse
+  persist_temporal_tokens: true

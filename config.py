@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+
+
+def _default_qwen3_model_path() -> str:
+    env_path = os.environ.get("INSPECT_QWEN3_MODEL_PATH", "").strip()
+    if env_path:
+        return env_path
+    return "models/qwen3-0.6b"
 
 
 @dataclass
@@ -35,9 +43,14 @@ class CameraConfig:
 @dataclass
 class DetectionConfig:
     conf: float = 0.25
+    identity_commit_conf: float = 0.50
+    identity_commit_track_margin: float = 0.12
     tta: bool = True
     nms_iou: float = 0.4
+    end2end: Optional[bool] = None
     use_builtin_tta: bool = False
+    track_class_smoothing_alpha: float = 0.82
+    track_class_switch_margin: float = 0.12
     min_box_area_ratio: float = 0.0002
     max_box_area_ratio: float = 0.60
     max_aspect_ratio: float = 6.0
@@ -45,11 +58,18 @@ class DetectionConfig:
     border_margin_px: int = 4
     max_per_class: int = 2
     dedupe_iou: float = 0.65
+    role_bridge_enabled: bool = False
+    role_bridge_max_gap: int = 120
+    role_bridge_confidence_decay: float = 0.995
+    role_bridge_min_confidence: float = 0.08
+    role_bridge_max_width: int = 960
+    role_bridge_min_points: int = 6
+    role_bridge_fb_error: float = 2.5
 
 
 @dataclass
 class GeometryConfig:
-    backend: str = "gradient"
+    backend: str = "moge"
     moge_model: str = "Ruicheng/moge-2-vits-normal"
     use_fp16: bool = True
     resolution_level: int = 9
@@ -58,7 +78,8 @@ class GeometryConfig:
 
 @dataclass
 class TemporalConfig:
-    backend: str = "bytetrack_lite"
+    backend: str = "ultralytics_botsort"
+    tracker_config: str = "botsort.yaml"
     window: int = 3
     iou_thr: float = 0.35
     track_high_thresh: float = 0.32
@@ -68,13 +89,40 @@ class TemporalConfig:
     lost_buffer: int = 8
     min_confirmed_hits: int = 2
     smooth_alpha: float = 0.70
+    identity_groups: List[List[str]] = field(default_factory=list)
+    cross_identity_match_penalty: float = 0.04
+    preserve_current_detections: bool = False
+
+
+@dataclass
+class TrackEvidenceConfig:
+    enabled: bool = True
+    stable_hits: int = 3
+    stable_confidence: float = 0.35
+    role_track_min_quality: float = 0.50
+    motion_px_threshold: float = 4.0
+    max_tracks: int = 24
+    prefer_stable_tracks_for_rules: bool = True
+    prefer_stable_tracks_for_stability: bool = True
+    fallback_to_confirmed_tracks: bool = True
+
+
+@dataclass
+class SceneEvidenceConfig:
+    enabled: bool = True
+    relation_change_memory: int = 24
+    max_objects: int = 32
+    max_relations: int = 48
+    max_changes: int = 32
 
 
 @dataclass
 class DepthContextConfig:
     tau_p: float = 80.0
     tau_d: float = 0.12
-    use_relevant_for_rules: bool = True
+    # Step proposal describes scene-level progress; nearest-object context is
+    # retained for interaction focus and claim-level evidence queries.
+    use_relevant_for_rules: bool = False
 
 
 @dataclass
@@ -86,11 +134,17 @@ class StabilityConfig:
 @dataclass
 class SceneGraphConfig:
     enabled: bool = True
+    visibility_calibration_enabled: bool = True
     depth_margin: float = 0.08
+    depth_inner_ratio: float = 0.12
+    min_depth_valid_fraction: float = 0.35
+    max_relative_depth_mad: float = 0.20
     contact_pixel_gap: float = 24.0
     contact_depth_gap: float = 0.12
     support_vertical_gap: float = 20.0
     support_overlap_ratio: float = 0.25
+    hard_pair_dedupe_iou: float = 0.85
+    min_relation_score: float = 0.08
     max_relations: int = 24
 
 
@@ -190,8 +244,8 @@ class OpsConfig:
 @dataclass
 class UIConfig:
     enabled: bool = True
-    window_name: str = "MICA Live"
-    focus_window_name: str = "MICA Focus"
+    window_name: str = "INSPECT Trace Engine"
+    focus_window_name: str = "INSPECT Focus"
     show_focus: bool = True
     show_help: bool = True
     key_quit: str = "q"
@@ -210,7 +264,7 @@ class VoiceConfig:
     model_name: str = "distil-small.en"
     cache_dir: str = ""
     language: str = "en"
-    wake_words: List[str] = field(default_factory=lambda: ["mica", "assistant"])
+    wake_words: List[str] = field(default_factory=lambda: ["inspect", "assistant"])
     require_wake_word_in_always_on: bool = True
     command_max_tokens: int = 6
     compute_type: str = "auto"
@@ -227,11 +281,11 @@ class VoiceConfig:
 @dataclass
 class SpeechConfig:
     enabled: bool = True
-    backend: str = "auto"
+    backend: str = "kokoro"
     rate: int = 1
     volume: float = 1.0
     voice_name: str = ""
-    kokoro_model_path: str = ""
+    kokoro_model_path: str = "models/kokoro-82m"
     kokoro_voices_path: str = ""
     kokoro_voice: str = "af_sarah"
     kokoro_language: str = "en-us"
@@ -248,6 +302,137 @@ class AssistantConfig:
     history_limit: int = 12
     relation_limit: int = 3
     overlay_chars: int = 120
+    llm_enabled: bool = True
+    llm_provider: str = "transformers"
+    llm_model_id: str = "Qwen/Qwen3-0.6B"
+    llm_model_path: str = field(default_factory=_default_qwen3_model_path)
+    llm_device_map: str = "auto"
+    llm_torch_dtype: str = "auto"
+    llm_max_new_tokens: int = 48
+    llm_temperature: float = 0.0
+    llm_top_p: float = 0.9
+    llm_timeout_sec: float = 2.0
+    llm_history_turns: int = 3
+    llm_max_context_chars: int = 2400
+    llm_answer_word_limit: int = 40
+    llm_streaming: bool = True
+    llm_async_refine: bool = True
+    llm_load_on_start: bool = False
+    llm_fallback_to_template: bool = True
+    llm_grounding_guard_enabled: bool = True
+    llm_trust_remote_code: bool = True
+
+
+@dataclass
+class ClaimVerifierConfig:
+    """Frozen claim-verification operating point used by replay and live assistance."""
+
+    enabled: bool = False
+    evidence_scorer_path: str = ""
+    support_threshold: float = 0.35
+    contradiction_threshold: float = 0.35
+    counterfactual_margin: float = 0.0
+    admissibility_gate_enabled: bool = True
+    memory_gate_enabled: bool = True
+    specialized_counterfactual_enabled: bool = True
+    prerequisite_bootstrap_enabled: bool = True
+    prerequisite_confirmation_frames: int = 2
+    ema_decay: float = 0.55
+    require_step_match_for_support: bool = True
+    product_family: str = ""
+    family_min_confidence: float = 0.08
+    family_margin: float = 0.03
+    family_confirmation_frames: int = 2
+
+
+@dataclass
+class CausalEvidenceBankConfig:
+    """Sparse assistant evidence shared by proposal and claim triage."""
+
+    enabled: bool = False
+    proposal_model_path: str = ""
+    triage_model_path: str = ""
+    dinov2_repo: str = "~/.cache/torch/hub/facebookresearch_dinov2_main"
+    device: str = "cuda:0"
+    load_encoder_on_start: bool = False
+
+
+@dataclass
+class EdgeRuntimeConfig:
+    """Latency and compute-routing controls for edge deployment."""
+
+    enabled: bool = False
+    profiling_enabled: bool = True
+    synchronize_cuda_for_timing: bool = False
+    target_perception_ms: float = 100.0
+    target_answer_ms: float = 350.0
+    detection_interval_stable: int = 2
+    geometry_interval_stable: int = 6
+    retrieval_interval_stable: int = 3
+    memory_embedding_interval_stable: int = 6
+    visual_probe_width: int = 160
+    visual_change_threshold: float = 0.012
+    max_geometry_age: int = 12
+    max_memory_embedding_age: int = 12
+    cold_start_frames: int = 2
+    persistent_missing_patience: int = 2
+    min_epistemic_gain: float = 0.02
+    min_stage_evidence_value: float = 0.25
+    force_detection_roles: List[str] = field(
+        default_factory=lambda: [
+            "identity_disambiguation",
+            "object_presence",
+            "occlusion_recovery",
+        ]
+    )
+    force_retrieval_roles: List[str] = field(
+        default_factory=lambda: [
+            "identity_disambiguation",
+            "object_presence",
+        ]
+    )
+    force_geometry_roles: List[str] = field(
+        default_factory=lambda: [
+            "alignment",
+            "boundary_visibility",
+            "contact_verification",
+            "containment",
+            "gap_visibility",
+            "insertion",
+            "slot_relation",
+        ]
+    )
+    force_segmentation_roles: List[str] = field(
+        default_factory=lambda: [
+            "boundary_visibility",
+            "contact_verification",
+            "containment",
+            "gap_visibility",
+            "insertion",
+            "slot_relation",
+        ]
+    )
+    structured_response_intents: List[str] = field(
+        default_factory=lambda: [
+            "capability",
+            "current_step",
+            "history_feedback",
+            "history_step",
+            "memory_context",
+            "next_step",
+            "object_count",
+            "object_presence",
+            "why_not_progressing",
+        ]
+    )
+    small_llm_intents: List[str] = field(
+        default_factory=lambda: [
+            "component_info",
+            "object_relation",
+            "safety",
+            "troubleshooting",
+        ]
+    )
 
 
 @dataclass
@@ -266,11 +451,11 @@ class TemporalStepConfig:
     retrieval_score_weight: float = 0.25
     memory_score_weight: float = 0.15
     graph_transition_penalty: float = 0.18
-    graph_requirement_bonus: float = 0.10
-    graph_requirement_penalty: float = 0.12
+    graph_requirement_bonus: float = 0.03
+    graph_requirement_penalty: float = 0.04
     graph_forbid_penalty: float = 0.16
-    graph_relation_bonus: float = 0.04
-    graph_relation_penalty: float = 0.06
+    graph_relation_bonus: float = 0.12
+    graph_relation_penalty: float = 0.10
 
 
 @dataclass
@@ -307,22 +492,14 @@ class OnlineFusionConfig:
 
 
 @dataclass
-class CorlAblationConfig:
-    gru_checkpoint: str = ""
-    gru_aux_checkpoint: str = ""
-    gru_agg_checkpoint: str = ""
-    gru_agg_offline_gate_checkpoint: str = ""
-    gru_agg_offline_gate_context_gate_checkpoint: str = ""
-    full_online_adapt_checkpoint: str = ""
-    full_online_adapt_context_gate_checkpoint: str = ""
-
-
-@dataclass
 class RunLogConfig:
     save_dir: str = "runs_modular"
     detail_level: str = "debug"
     live_detail_level: str = "sparse"
     persist_temporal_tokens: bool = True
+    eval_realtime: bool = False
+    eval_window: int = 60
+    eval_report_interval: int = 15
 
 
 @dataclass
@@ -332,6 +509,8 @@ class AppConfig:
     detection: DetectionConfig = field(default_factory=DetectionConfig)
     geometry: GeometryConfig = field(default_factory=GeometryConfig)
     temporal: TemporalConfig = field(default_factory=TemporalConfig)
+    track_evidence: TrackEvidenceConfig = field(default_factory=TrackEvidenceConfig)
+    scene_evidence: SceneEvidenceConfig = field(default_factory=SceneEvidenceConfig)
     depth_context: DepthContextConfig = field(default_factory=DepthContextConfig)
     stability: StabilityConfig = field(default_factory=StabilityConfig)
     scene_graph: SceneGraphConfig = field(default_factory=SceneGraphConfig)
@@ -346,9 +525,13 @@ class AppConfig:
     voice: VoiceConfig = field(default_factory=VoiceConfig)
     speech: SpeechConfig = field(default_factory=SpeechConfig)
     assistant: AssistantConfig = field(default_factory=AssistantConfig)
+    claim_verifier: ClaimVerifierConfig = field(default_factory=ClaimVerifierConfig)
+    causal_evidence_bank: CausalEvidenceBankConfig = field(
+        default_factory=CausalEvidenceBankConfig
+    )
+    edge_runtime: EdgeRuntimeConfig = field(default_factory=EdgeRuntimeConfig)
     temporal_step: TemporalStepConfig = field(default_factory=TemporalStepConfig)
     online_fusion: OnlineFusionConfig = field(default_factory=OnlineFusionConfig)
-    corl_ablation: CorlAblationConfig = field(default_factory=CorlAblationConfig)
     runlog: RunLogConfig = field(default_factory=RunLogConfig)
 
     @classmethod
@@ -363,6 +546,8 @@ class AppConfig:
             detection=DetectionConfig(**(payload.get("detection", {}) or {})),
             geometry=GeometryConfig(**(payload.get("geometry", {}) or {})),
             temporal=TemporalConfig(**(payload.get("temporal", {}) or {})),
+            track_evidence=TrackEvidenceConfig(**(payload.get("track_evidence", {}) or {})),
+            scene_evidence=SceneEvidenceConfig(**(payload.get("scene_evidence", {}) or {})),
             depth_context=DepthContextConfig(**(payload.get("depth_context", {}) or {})),
             stability=StabilityConfig(**(payload.get("stability", {}) or {})),
             scene_graph=SceneGraphConfig(**(payload.get("scene_graph", {}) or {})),
@@ -377,15 +562,19 @@ class AppConfig:
             voice=VoiceConfig(**voice_payload),
             speech=SpeechConfig(**(payload.get("speech", {}) or {})),
             assistant=AssistantConfig(**(payload.get("assistant", {}) or {})),
+            claim_verifier=ClaimVerifierConfig(**(payload.get("claim_verifier", {}) or {})),
+            causal_evidence_bank=CausalEvidenceBankConfig(
+                **(payload.get("causal_evidence_bank", {}) or {})
+            ),
+            edge_runtime=EdgeRuntimeConfig(**(payload.get("edge_runtime", {}) or {})),
             temporal_step=TemporalStepConfig(**(payload.get("temporal_step", {}) or {})),
             online_fusion=OnlineFusionConfig(**(payload.get("online_fusion", {}) or {})),
-            corl_ablation=CorlAblationConfig(**(payload.get("corl_ablation", {}) or {})),
             runlog=RunLogConfig(**(payload.get("runlog", {}) or {})),
         )
 
 
-def apply_ablation_preset(config: AppConfig, preset: Optional[str]) -> AppConfig:
-    """Apply a named ablation preset to the loaded config."""
+def apply_memory_preset(config: AppConfig, preset: Optional[str]) -> AppConfig:
+    """Apply a named memory preset to the loaded config."""
 
     normalized = str(preset or config.memory.preset or "").strip().lower()
     if not normalized or normalized == "custom":
@@ -407,108 +596,13 @@ def apply_ablation_preset(config: AppConfig, preset: Optional[str]) -> AppConfig
         config.memory.enabled = True
         config.memory.auto_capture_enabled = False
         return config
-    if normalized in {"gru", "gru-aux", "gru-agg", "gru-agg-offline-gate", "full-online-adapt"}:
-        return _apply_corl_ablation_preset(config, normalized)
-    raise ValueError(f"Unknown ablation preset: {preset}")
+    raise ValueError(f"Unknown memory preset: {preset}")
 
 
-def _apply_corl_ablation_preset(config: AppConfig, preset: str) -> AppConfig:
-    config.temporal_step.enabled = True
-    config.temporal_step.backend = "gru_stream"
-    config.memory.enabled = False
-    config.review.enabled = False
-    config.online_fusion.context_gate_enabled = False
-    config.online_fusion.context_gate_checkpoint = ""
-    config.temporal_step.learned_token_aggregation = False
+def apply_ablation_preset(config: AppConfig, preset: Optional[str]) -> AppConfig:
+    """Backward-compatible alias for older scripts."""
 
-    def pick(*values: str) -> str:
-        for value in values:
-            candidate = str(value or "").strip()
-            if candidate:
-                return candidate
-        return ""
-
-    def require(value: str, *, name: str) -> str:
-        candidate = str(value or "").strip()
-        if candidate:
-            return candidate
-        raise ValueError(f"A checkpoint path is required for the '{preset}' preset: missing {name}.")
-
-    if preset == "gru":
-        config.temporal_step.checkpoint_path = require(
-            pick(config.corl_ablation.gru_checkpoint, config.temporal_step.checkpoint_path),
-            name="corl_ablation.gru_checkpoint",
-        )
-        return config
-
-    if preset == "gru-aux":
-        config.temporal_step.checkpoint_path = require(
-            pick(
-                config.corl_ablation.gru_aux_checkpoint,
-                config.corl_ablation.gru_checkpoint,
-                config.temporal_step.checkpoint_path,
-            ),
-            name="corl_ablation.gru_aux_checkpoint",
-        )
-        return config
-
-    if preset == "gru-agg":
-        config.temporal_step.learned_token_aggregation = True
-        config.temporal_step.checkpoint_path = require(
-            pick(
-                config.corl_ablation.gru_agg_checkpoint,
-                config.corl_ablation.gru_aux_checkpoint,
-                config.temporal_step.checkpoint_path,
-            ),
-            name="corl_ablation.gru_agg_checkpoint",
-        )
-        return config
-
-    if preset == "gru-agg-offline-gate":
-        config.temporal_step.learned_token_aggregation = True
-        config.temporal_step.checkpoint_path = require(
-            pick(
-                config.corl_ablation.gru_agg_offline_gate_checkpoint,
-                config.corl_ablation.gru_agg_checkpoint,
-                config.temporal_step.checkpoint_path,
-            ),
-            name="corl_ablation.gru_agg_offline_gate_checkpoint",
-        )
-        config.online_fusion.context_gate_enabled = True
-        config.online_fusion.context_gate_checkpoint = require(
-            pick(
-                config.corl_ablation.gru_agg_offline_gate_context_gate_checkpoint,
-                config.online_fusion.context_gate_checkpoint,
-            ),
-            name="corl_ablation.gru_agg_offline_gate_context_gate_checkpoint",
-        )
-        return config
-
-    if preset == "full-online-adapt":
-        config.temporal_step.learned_token_aggregation = True
-        config.temporal_step.checkpoint_path = require(
-            pick(
-                config.corl_ablation.full_online_adapt_checkpoint,
-                config.corl_ablation.gru_agg_offline_gate_checkpoint,
-                config.corl_ablation.gru_agg_checkpoint,
-                config.temporal_step.checkpoint_path,
-            ),
-            name="corl_ablation.full_online_adapt_checkpoint",
-        )
-        config.memory.enabled = True
-        config.review.enabled = True
-        config.online_fusion.context_gate_enabled = True
-        config.online_fusion.context_gate_checkpoint = require(
-            pick(
-                config.corl_ablation.full_online_adapt_context_gate_checkpoint,
-                config.corl_ablation.gru_agg_offline_gate_context_gate_checkpoint,
-                config.online_fusion.context_gate_checkpoint,
-            ),
-            name="corl_ablation.full_online_adapt_context_gate_checkpoint",
-        )
-        return config
-
-    raise ValueError(f"Unknown CoRL ablation preset: {preset}")
+    return apply_memory_preset(config, preset)
 
 
 def load_config(path: Optional[str]) -> AppConfig:
@@ -520,4 +614,4 @@ def load_config(path: Optional[str]) -> AppConfig:
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    return apply_ablation_preset(AppConfig.from_dict(payload), None)
+    return apply_memory_preset(AppConfig.from_dict(payload), None)

@@ -1,0 +1,11 @@
+-r requirements.txt
+transformers>=4.51,<6
+accelerate>=1.0,<2
+huggingface-hub>=0.30
+safetensors>=0.5
+sentencepiece>=0.2
+sounddevice>=0.5,<1
+soundfile>=0.12,<1
+faster-whisper>=1.1,<2
+pyttsx3>=2.90,<3
+kokoro-onnx>=0.4,<1

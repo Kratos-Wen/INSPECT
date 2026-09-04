@@ -7,7 +7,7 @@ from typing import Iterable, Optional
 import cv2
 import numpy as np
 
-from ..types import RuntimeAction
+from ..core_types import RuntimeAction
 
 
 class OpenCVRuntimeUI:
@@ -16,8 +16,8 @@ class OpenCVRuntimeUI:
     def __init__(
         self,
         enabled: bool = True,
-        window_name: str = "MICA Live",
-        focus_window_name: str = "MICA Focus",
+        window_name: str = "INSPECT Trace Engine",
+        focus_window_name: str = "INSPECT Focus",
         show_focus: bool = True,
         show_help: bool = True,
         key_quit: str = "q",
@@ -39,7 +39,6 @@ class OpenCVRuntimeUI:
             ord(" "): RuntimeAction("toggle_pause", source="keyboard"),
             ord(str(key_voice).lower()[:1]): RuntimeAction("voice_capture", source="keyboard"),
             ord(str(key_mute).lower()[:1]): RuntimeAction("toggle_voice_mute", source="keyboard"),
-            ord("s"): RuntimeAction("toggle_voice_mute", source="keyboard"),
             ord(str(key_feedback).lower()[:1]): RuntimeAction("force_feedback", source="keyboard"),
             ord(str(key_help).lower()[:1]): RuntimeAction("toggle_help", source="keyboard"),
         }

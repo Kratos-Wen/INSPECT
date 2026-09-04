@@ -10,7 +10,7 @@ from .types import ActiveObservationDecision, ProceduralEvidenceGraph, Verificat
 
 
 def _load_json_or_jsonl(path: Path) -> List[dict]:
-    text = Path(path).read_text(encoding="utf-8").strip()
+    text = Path(path).read_text(encoding="utf-8-sig").strip()
     if not text:
         return []
     if text.startswith("["):

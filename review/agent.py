@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, Tuple
 
-from ..types import FeedbackEvent, StepPrediction
+from ..core_types import FeedbackEvent, StepPrediction
 from .types import ReviewDecision, ReviewRequest, ReviewTrigger
 
 

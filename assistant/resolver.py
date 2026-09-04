@@ -36,14 +36,22 @@ def resolve_query(
     }
     target_component = ""
     if parsed.intent in component_scoped_intents:
-        target_component = _resolve_component(parsed.text, parsed.tokens, snapshot, kb, state)
+        target_component = _resolve_component(parsed.text, parsed.tokens, snapshot, kb, state, parsed.intent)
     used_history = bool(target_component and state.last_component and target_component == state.last_component)
     target_step = _resolve_step(parsed.target_step_hint, snapshot)
 
     clarification = ""
     can_answer = True
     confidence = 0.85
-    if parsed.intent in {"object_count", "object_relation", "safety", "troubleshooting", "component_info"} and not target_component:
+    if parsed.intent == "object_count" and not target_component and not _is_generic_count_query(parsed.text):
+        can_answer = False
+        clarification = _clarify_component(snapshot)
+        confidence = 0.25
+    elif parsed.intent == "object_relation" and not target_component and not _is_generic_relation_query(parsed.text):
+        can_answer = False
+        clarification = _clarify_component(snapshot)
+        confidence = 0.25
+    elif parsed.intent in {"safety", "troubleshooting", "component_info"} and not target_component:
         can_answer = False
         clarification = _clarify_component(snapshot)
         confidence = 0.25
@@ -86,8 +94,25 @@ def _resolve_component(
     snapshot: AssistantSnapshot,
     kb: KnowledgeBase,
     state: DialogueState,
+    intent: str,
 ) -> str:
     lowered = str(text).lower()
+    if "type 6 sub-assembl" in lowered:
+        return "type_6_gearbox_housing"
+    if "type 5 sub-assembl" in lowered:
+        return "type_5_gearbox_housing"
+
+    specific_global = _best_component_match(query_tokens, kb.component_names(), kb, threshold=0.85)
+    if specific_global:
+        return specific_global
+
+    has_reference_pronoun = any(
+        token in lowered
+        for token in ("this part", "that part", "this component", "that component", "this one", "that one", "it")
+    )
+    if has_reference_pronoun and state.last_component:
+        return state.last_component
+
     visible_preferred = list(_unique(snapshot.relevant_objects + snapshot.visible_objects))
     for name in visible_preferred:
         display = kb.component_display_name(name).lower()
@@ -98,11 +123,12 @@ def _resolve_component(
     if best_name:
         return best_name
 
-    if any(token in lowered for token in ("this part", "that part", "this one", "that one", "it")):
+    if intent == "troubleshooting" and len(visible_preferred) == 1:
+        return visible_preferred[0]
+
+    if has_reference_pronoun:
         if len(snapshot.relevant_objects) == 1:
             return str(snapshot.relevant_objects[0]).strip().lower()
-        if state.last_component:
-            return state.last_component
 
     best_global = _best_component_match(query_tokens, kb.component_names(), kb, threshold=0.55)
     return best_global
@@ -141,6 +167,38 @@ def _clarify_component(snapshot: AssistantSnapshot) -> str:
         shortlist = ", ".join(visible[:3])
         return f"Which part do you mean? I currently see {shortlist}."
     return "I need a specific visible part to answer that."
+
+
+def _is_generic_count_query(text: str) -> bool:
+    lowered = str(text).lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "objects are detected",
+            "objects detected",
+            "distinct components",
+            "all distinct",
+            "duplicate components",
+            "duplicates",
+        )
+    )
+
+
+def _is_generic_relation_query(text: str) -> bool:
+    lowered = str(text).lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "scene relation",
+            "visible parts",
+            "current parts",
+            "spatially related",
+            "relation between the parts",
+            "relation between these parts",
+            "between the visible parts",
+            "between current parts",
+        )
+    )
 
 
 def _unique(items: List[str]) -> List[str]:

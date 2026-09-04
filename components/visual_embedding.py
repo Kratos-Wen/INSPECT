@@ -8,7 +8,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from ..types import Detection
+from ..core_types import Detection
 
 _HAS_CLIP = False
 try:  # pragma: no cover - dependency-dependent path

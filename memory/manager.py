@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from uuid import uuid4
 
 from ..config import MemoryConfig
-from ..types import Detection, FeedbackEvent, FusionResult, GeometryFrame, SceneGraphFrame, StepPrediction
+from ..core_types import Detection, FeedbackEvent, FusionResult, GeometryFrame, SceneGraphFrame, StepPrediction
 from ..components.visual_embedding import SharedVisualEncoder
 from .capture import CaptureDecision, VerifiedOutcomeCapturePolicy
 from .features import (
@@ -106,6 +106,7 @@ class MemoryLifecycleManager:
         frame_bgr,
         scene_graph: Optional[SceneGraphFrame],
         expert_predictions: Dict[str, StepPrediction],
+        visual_embedding_override: Optional[List[float]] = None,
     ) -> MemoryObservation:
         """Build a structured observation from current perception evidence."""
 
@@ -116,10 +117,13 @@ class MemoryLifecycleManager:
         has_visual_evidence = bool(detections or relevant_detections or relation_signature(scene_graph))
         visual_embedding: List[float] = []
         if self.visual_encoder is not None and has_visual_evidence:
-            visual_embedding = [
-                float(value)
-                for value in self.visual_encoder.encode_query(frame_bgr, focus_detection=focus_detection).tolist()
-            ]
+            if visual_embedding_override is not None:
+                visual_embedding = [float(value) for value in visual_embedding_override]
+            else:
+                visual_embedding = [
+                    float(value)
+                    for value in self.visual_encoder.encode_query(frame_bgr, focus_detection=focus_detection).tolist()
+                ]
         consensus = summarize_step_consensus(filtered_predictions, self.steps)
         return MemoryObservation(
             frame_index=int(frame_index),

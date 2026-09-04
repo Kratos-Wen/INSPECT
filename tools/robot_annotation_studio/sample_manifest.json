@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "project": {
+    "name": "Fixed-Lattice Robot Inspection",
+    "description": "Demonstration manifest; replace with a generated project manifest"
+  },
+  "ontology": {
+    "evidence_roles": [
+      {"id": "identity", "label": "Identity"},
+      {"id": "insertion", "label": "Insertion"},
+      {"id": "containment", "label": "Containment"},
+      {"id": "alignment", "label": "Alignment"},
+      {"id": "slot_relation", "label": "Slot relation"},
+      {"id": "boundary_gap", "label": "Boundary / gap"},
+      {"id": "contact", "label": "Contact"},
+      {"id": "occlusion_recovery", "label": "Occlusion recovery"}
+    ],
+    "object_classes": [
+      {"id": "target_part", "label": "Target part"},
+      {"id": "gear", "label": "Gear"},
+      {"id": "housing", "label": "Housing"},
+      {"id": "cover", "label": "Cover"},
+      {"id": "slot", "label": "Slot"}
+    ],
+    "relation_types": [
+      {"id": "inside", "label": "Inside housing"},
+      {"id": "inserted", "label": "Inserted"},
+      {"id": "aligned", "label": "Aligned with slot"},
+      {"id": "seated", "label": "Cover seated"},
+      {"id": "touching", "label": "Contact / touching"},
+      {"id": "gap_visible", "label": "Gap visible"},
+      {"id": "wrong_orientation_visible", "label": "Wrong orientation visible"}
+    ],
+    "keypoint_types": [
+      {"id": "gear_center", "label": "Gear center"},
+      {"id": "gear_orientation", "label": "Gear orientation marker"},
+      {"id": "slot_center", "label": "Slot center"},
+      {"id": "slot_axis", "label": "Slot axis marker"},
+      {"id": "cover_boundary", "label": "Cover boundary"},
+      {"id": "gap_endpoint", "label": "Gap endpoint"}
+    ],
+    "error_types": [
+      "correct",
+      "wrong_identity",
+      "wrong_family",
+      "wrong_orientation",
+      "incomplete_insertion",
+      "misalignment",
+      "cover_gap",
+      "part_absent"
+    ]
+  },
+  "setups": [
+    {
+      "setup_id": "demo_001",
+      "split": "example",
+      "claim_id": "gear_inserted",
+      "claim_text": "Target gear is correctly inserted in the housing slot",
+      "required_roles": ["identity", "insertion", "containment", "slot_relation"],
+      "setup_prefill": {
+        "assembly_family": "A",
+        "active_claim_id": "gear_inserted"
+      },
+      "views": [
+        {"view_id": "V0", "image": "sample_media/demo_view.svg"},
+        {"view_id": "V1", "image": "sample_media/demo_view.svg"},
+        {"view_id": "V2", "image": "sample_media/demo_view.svg"},
+        {"view_id": "V3", "image": "sample_media/demo_view.svg"},
+        {"view_id": "V4", "image": "sample_media/demo_view.svg"},
+        {"view_id": "V5", "image": "sample_media/demo_view.svg"}
+      ]
+    }
+  ]
+}

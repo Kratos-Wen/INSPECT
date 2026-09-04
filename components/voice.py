@@ -15,7 +15,7 @@ from typing import Iterable, Optional
 
 import numpy as np
 
-from ..types import RuntimeAction
+from ..core_types import RuntimeAction
 
 try:
     import sounddevice as sd
@@ -184,7 +184,7 @@ class VoiceCommandService:
         model_name: str = "distil-small.en",
         cache_dir: str = "",
         language: str = "en",
-        wake_words: Iterable[str] = ("mica", "assistant"),
+        wake_words: Iterable[str] = ("inspect", "assistant"),
         require_wake_word_in_always_on: bool = True,
         command_max_tokens: int = 6,
         compute_type: str = "auto",
@@ -200,7 +200,7 @@ class VoiceCommandService:
         self.steps = [str(step).strip().upper() for step in steps]
         self.enabled = bool(enabled)
         self.mode = str(mode).strip().lower()
-        self.backend = str(backend).strip().lower()
+        self.backend = str(backend).strip().lower().replace("-", "_")
         self.model_name = str(model_name).strip()
         self.cache_dir = str(cache_dir).strip()
         self.language = str(language).strip() or "en"

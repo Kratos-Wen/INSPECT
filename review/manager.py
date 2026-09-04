@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 from ..memory.types import MemoryObservation, MemoryRecallResult
-from ..types import FeedbackEvent, FusionResult, StepPrediction
+from ..core_types import FeedbackEvent, FusionResult, StepPrediction
 from .agent import SparseReviewerAgent
 from .policy import SparseReviewPolicy
 from .types import ReviewDecision, ReviewRequest

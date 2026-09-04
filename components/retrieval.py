@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 import cv2
 import numpy as np
 
-from ..types import RetrievalInput, StepPrediction
+from ..core_types import RetrievalInput, StepPrediction
 from .visual_embedding import SharedVisualEncoder
 
 
@@ -60,6 +60,8 @@ class GalleryRetrievalExpert:
         embed_mode: str = "hybrid-4",
         topk: int = 5,
         encoder: Optional[SharedVisualEncoder] = None,
+        negative_weight: float = 0.65,
+        negative_margin: float = 0.03,
     ) -> None:
         self.root = Path(root)
         self.steps = [str(step).strip().upper() for step in steps]
@@ -67,7 +69,10 @@ class GalleryRetrievalExpert:
         self.embed_mode = str(embed_mode).strip().lower()
         self.topk = max(1, int(topk))
         self.encoder = encoder or SharedVisualEncoder(mode=self.embed_mode)
+        self.negative_weight = float(negative_weight)
+        self.negative_margin = float(negative_margin)
         self.items: List[GalleryItem] = []
+        self.negative_items: List[GalleryItem] = []
 
     def build(self) -> int:
         """Index the gallery and return the number of indexed images."""
@@ -75,11 +80,13 @@ class GalleryRetrievalExpert:
         if not self.root.exists():
             raise FileNotFoundError(f"Gallery root not found: {self.root}")
         self.items.clear()
+        self.negative_items.clear()
         for step_dir in sorted(self.root.iterdir()):
             if not step_dir.is_dir():
                 continue
             step_id = self._parse_step_id(step_dir.name)
-            if step_id is None:
+            is_negative = step_id is None and self._is_negative_folder(step_dir.name)
+            if step_id is None and not is_negative:
                 continue
             for path in step_dir.rglob("*"):
                 if not path.is_file() or path.suffix.lower() not in self.exts:
@@ -88,8 +95,12 @@ class GalleryRetrievalExpert:
                 if image is None:
                     continue
                 embedding = self.encoder.encode_image(image)
-                self.items.append(GalleryItem(step_id=step_id, path=str(path), embedding=embedding))
-        return len(self.items)
+                item = GalleryItem(step_id=step_id or "__NEGATIVE__", path=str(path), embedding=embedding)
+                if is_negative:
+                    self.negative_items.append(item)
+                else:
+                    self.items.append(item)
+        return len(self.items) + len(self.negative_items)
 
     def predict(self, payload: object) -> StepPrediction:
         """Predict dense step scores from the current frame or structured query."""
@@ -101,6 +112,11 @@ class GalleryRetrievalExpert:
         query = self.encoder.encode_query(frame_bgr, focus_detection=focus_detection)
         matrix = np.stack([item.embedding for item in self.items], axis=0)
         similarities = matrix @ query
+        negative_score: Optional[float] = None
+        if self.negative_items:
+            negative_matrix = np.stack([item.embedding for item in self.negative_items], axis=0)
+            negative_values = negative_matrix @ query
+            negative_score = float(np.max(negative_values)) if negative_values.size else None
 
         aggregated: Dict[str, List[float]] = {step_id: [] for step_id in self.steps}
         for item, similarity in zip(self.items, similarities):
@@ -114,13 +130,41 @@ class GalleryRetrievalExpert:
                 continue
             raw_scores[step_id] = float(np.mean(values[: self.topk]))
 
+        best_positive = max(raw_scores.values()) if raw_scores else -1.0
+        invalid_like = False
+        if negative_score is not None:
+            invalid_like = negative_score >= best_positive + self.negative_margin
+            if invalid_like:
+                scores = {step_id: 0.0 for step_id in self.steps}
+                top_step = self.steps[0]
+                return StepPrediction(
+                    step_id=top_step,
+                    confidence=0.0,
+                    scores=scores,
+                    extras={
+                        "raw_scores": raw_scores,
+                        "embed_mode": self.embed_mode,
+                        "negative_score": negative_score,
+                        "invalid_like": True,
+                    },
+                )
+            for step_id, value in list(raw_scores.items()):
+                penalty = max(0.0, negative_score - value + self.negative_margin)
+                raw_scores[step_id] = float(value - self.negative_weight * penalty)
+
         scores = _normalize_scores(raw_scores)
         top_step = max(scores, key=scores.get) if scores else self.steps[0]
         return StepPrediction(
             step_id=top_step,
             confidence=float(scores.get(top_step, 0.0)),
             scores=scores,
-            extras={"raw_scores": raw_scores, "embed_mode": self.embed_mode},
+            extras={
+                "raw_scores": raw_scores,
+                "embed_mode": self.embed_mode,
+                "negative_score": negative_score,
+                "num_negative_items": len(self.negative_items),
+                "invalid_like": False,
+            },
         )
 
     def _resolve_query(self, payload: object) -> tuple[np.ndarray, Optional[object]]:
@@ -143,3 +187,18 @@ class GalleryRetrievalExpert:
         if upper in self.steps:
             return upper
         return None
+
+    @staticmethod
+    def _is_negative_folder(folder_name: str) -> bool:
+        normalized = folder_name.strip().lower().replace("-", "_").replace(" ", "_")
+        return normalized in {
+            "wrong",
+            "invalid",
+            "negative",
+            "negatives",
+            "hard_negative",
+            "hard_negatives",
+            "no_step",
+            "no_step4",
+            "_negative",
+        } or normalized.startswith("wrong_") or normalized.startswith("negative_") or normalized.startswith("no_step")

@@ -1,0 +1,10 @@
+numpy>=1.26,<3
+scipy>=1.10,<2
+opencv-python>=4.8,<5
+PyYAML>=6,<7
+Pillow>=10,<13
+joblib>=1.2,<2
+scikit-learn>=1.2,<2
+torch>=2.2
+torchvision>=0.17
+ultralytics>=8.4.21,<9

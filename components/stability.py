@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import List, Tuple
 
-from ..types import Detection
+from ..core_types import Detection
 
 
 def detection_signature(detections: List[Detection]) -> Tuple[Tuple[str, int], ...]:

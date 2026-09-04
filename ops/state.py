@@ -7,7 +7,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from ..types import FeedbackEvent
+from ..core_types import FeedbackEvent
 from .types import OpsSnapshot
 
 

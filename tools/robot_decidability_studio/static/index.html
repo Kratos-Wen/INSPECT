@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Robot View Decidability Studio</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand-block">
+      <span class="brand-mark">RV</span>
+      <div><h1>Robot View Decidability Studio</h1><p>Binary claim visibility annotation</p></div>
+    </div>
+    <div class="header-progress">
+      <div><span id="progressText">Loading project</span><strong id="progressPercent">0%</strong></div>
+      <div class="progress-track"><span id="progressBar"></span></div>
+    </div>
+    <div class="header-actions">
+      <label class="annotator-field"><span>Annotator</span><input id="annotatorInput" placeholder="Initials or ID" autocomplete="off"></label>
+      <button id="exportButton" class="button secondary">Export</button>
+      <button id="helpButton" class="icon-button" title="Labeling guide" aria-label="Labeling guide">?</button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <aside class="queue-panel">
+      <div class="queue-tools">
+        <input id="searchInput" type="search" placeholder="Search setup or claim">
+        <select id="taskFilter" aria-label="Task filter">
+          <option value="pending">Pending work</option>
+          <option value="occlusion">Occlusion only</option>
+          <option value="new">New decidability</option>
+          <option value="review">Flagged</option>
+          <option value="complete">Completed</option>
+          <option value="all">All views</option>
+        </select>
+      </div>
+      <div class="queue-summary">
+        <span id="queueCount">0 tasks</span>
+        <button id="nextPendingButton" class="text-button">Next pending</button>
+      </div>
+      <div id="setupQueue" class="setup-queue"></div>
+    </aside>
+
+    <section class="workspace">
+      <div class="context-bar">
+        <div>
+          <span id="contextMeta" class="eyebrow">Setup</span>
+          <h2 id="claimText">Select a task</h2>
+          <p id="familyText"></p>
+        </div>
+        <div class="context-actions">
+          <button id="previousSetupButton" class="icon-button" title="Previous setup (K)">&#8593;</button>
+          <button id="nextSetupButton" class="icon-button" title="Next setup (J)">&#8595;</button>
+        </div>
+      </div>
+      <div id="viewTabs" class="view-tabs" aria-label="Six fixed lattice views"></div>
+      <div class="image-stage">
+        <img id="activeImage" alt="Current fixed-lattice robot view">
+        <div id="imageLoading" class="image-loading">Loading view</div>
+        <div id="imageCaption" class="image-caption"></div>
+      </div>
+      <div class="workspace-footer">
+        <span>Judge this image only. Other views and physical truth are hidden.</span>
+        <span><kbd>1</kbd> decidable <kbd>0</kbd> not decidable <kbd>O</kbd> occluded <kbd>V</kbd> not occluded</span>
+      </div>
+    </section>
+
+    <aside class="label-panel">
+      <div class="label-heading">
+        <div><span id="viewMeta" class="eyebrow">View</span><h3>Claim visibility</h3></div>
+        <span id="workflowBadge" class="status-badge draft">Draft</span>
+      </div>
+
+      <section id="legacySection" class="info-band hidden">
+        <strong>Existing human label reused</strong>
+        <p id="legacyText"></p>
+        <span id="legacySource"></span>
+      </section>
+
+      <section class="question-section">
+        <div class="question-number">1</div>
+        <div class="question-copy">
+          <h4>Can this view alone decide the active claim?</h4>
+          <p>Do not infer from another view or from the known physical setup.</p>
+        </div>
+        <div id="decidableControl" class="binary-control">
+          <button data-value="yes" class="yes"><strong>1</strong><span>Decidable</span></button>
+          <button data-value="no" class="no"><strong>0</strong><span>Cannot decide</span></button>
+        </div>
+        <p id="lockedMessage" class="locked-message hidden">This answer comes from your existing annotation and is locked.</p>
+      </section>
+
+      <section id="occlusionSection" class="question-section hidden">
+        <div class="question-number">2</div>
+        <div class="question-copy">
+          <h4>Is the claim-critical region visibly occluded?</h4>
+          <p>Choose Yes only when an object visibly blocks the relevant region. Do not guess another cause.</p>
+        </div>
+        <div id="occlusionControl" class="binary-control">
+          <button data-value="yes" class="occluded"><strong>O</strong><span>Occluded</span></button>
+          <button data-value="no" class="clear"><strong>V</strong><span>Not occluded</span></button>
+        </div>
+      </section>
+
+      <section class="annotation-details">
+        <label class="flag-row"><input id="flagCheckbox" type="checkbox"><span>Flag for reviewer</span></label>
+        <label>Optional note<textarea id="notesInput" rows="3" placeholder="Only record a concrete visibility issue."></textarea></label>
+      </section>
+
+      <div id="validationMessage" class="validation-message">Select a view to begin.</div>
+      <div class="label-footer">
+        <label class="auto-advance"><input id="autoAdvanceCheckbox" type="checkbox" checked><span>Auto-advance after completion</span></label>
+        <div><button id="saveButton" class="button secondary">Save draft</button><button id="completeButton" class="button primary">Complete &amp; next</button></div>
+      </div>
+    </aside>
+  </main>
+
+  <dialog id="helpDialog">
+    <div class="dialog-heading"><h3>Minimal labeling protocol</h3><button id="closeHelpButton" class="icon-button" aria-label="Close">&#10005;</button></div>
+    <div class="help-content">
+      <p><strong>Question 1:</strong> decide whether this image alone is sufficient to determine the active claim.</p>
+      <p><strong>Question 2:</strong> when it is not sufficient, mark only explicit visual occlusion. No partial, ambiguity, blur, or out-of-view cause is requested.</p>
+      <div class="family-table">
+        <strong>A</strong><span>Type 5 housing/cover</span><span>Type 3 small gear</span><span>Type 8 big gear</span>
+        <strong>B</strong><span>Type 6 housing/cover</span><span>Type 7 small gear</span><span>Type 2 big gear</span>
+      </div>
+      <p>Family follows the canonical housing/product set. A misplaced part is an error and does not redefine the family.</p>
+    </div>
+  </dialog>
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

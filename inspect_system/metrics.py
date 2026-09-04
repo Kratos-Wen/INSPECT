@@ -13,17 +13,23 @@ def summarize_traces(traces: Iterable[VerifiedTraceEvent]) -> Dict[str, object]:
     sources = Counter(event.verification_source for event in trace_list)
     levels = Counter(event.verification_level for event in trace_list)
     verified = [event for event in trace_list if event.verified]
-    strong = [event for event in trace_list if event.verification_level in {"L2", "L3", "L4"}]
+    strong = [event for event in trace_list if event.can_create_strong_edge]
     evidence_counts = [len(event.observed_evidence) for event in trace_list]
+    postcondition_counts = [len(event.postcondition_evidence) for event in trace_list]
     return {
         "num_events": len(trace_list),
         "num_verified": len(verified),
         "num_strong_verified": len(strong),
+        "num_can_create_strong_edge": len(strong),
         "verified_fraction": (len(verified) / len(trace_list) if trace_list else 0.0),
+        "strong_edge_fraction": (len(strong) / len(trace_list) if trace_list else 0.0),
         "verification_sources": dict(sources),
         "verification_levels": dict(levels),
         "mean_trust_weight": (sum(event.trust_weight for event in trace_list) / len(trace_list) if trace_list else 0.0),
         "mean_observed_evidence": (sum(evidence_counts) / len(evidence_counts) if evidence_counts else 0.0),
+        "mean_postcondition_evidence": (
+            sum(postcondition_counts) / len(postcondition_counts) if postcondition_counts else 0.0
+        ),
         "num_human_corrections": int(sources.get("human_correction", 0)),
         "num_human_accepts": int(sources.get("human_accept", 0)),
         "num_reviewer_corrections": int(sources.get("reviewer_correction", 0)),

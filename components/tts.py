@@ -122,7 +122,7 @@ class _KokoroSpeaker(_BaseSpeaker):
         process = subprocess.Popen(
             [
                 self.worker_python_path,
-                str(Path(__file__).resolve().parent.parent.parent / "tools" / "kokoro_worker.py"),
+                str(self._resolve_worker_script()),
                 "--model-path",
                 self.model_path,
                 "--voices-path",
@@ -183,24 +183,42 @@ class _KokoroSpeaker(_BaseSpeaker):
 
     @staticmethod
     def _resolve_worker_python(worker_python_path: str) -> str:
+        repo_root = Path(__file__).resolve().parents[1]
         candidate = str(worker_python_path or "").strip()
         if candidate:
             resolved = Path(candidate)
+            if not resolved.is_absolute():
+                resolved = repo_root / resolved
         else:
-            resolved = Path(__file__).resolve().parent.parent / ".venv_kokoro" / "Scripts" / "python.exe"
+            resolved = Path(sys.executable)
         if not resolved.exists():
             raise RuntimeError(
-                "Kokoro backend requires a dedicated Python with kokoro_onnx. "
+                "Kokoro backend requires a Python interpreter with kokoro_onnx. "
                 f"Missing interpreter: {resolved}"
             )
         return str(resolved)
 
     @staticmethod
+    def _resolve_worker_script() -> Path:
+        repo_root = Path(__file__).resolve().parents[1]
+        candidates = [
+            repo_root / "tools" / "kokoro_worker.py",
+            repo_root.parent / "tools" / "kokoro_worker.py",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        raise RuntimeError("Kokoro worker script not found under repo tools/ or parent tools/.")
+
+    @staticmethod
     def _resolve_model_assets(model_path: str, voices_path: str) -> tuple[str, str]:
+        repo_root = Path(__file__).resolve().parents[1]
         raw_model_path = str(model_path or "").strip()
         if not raw_model_path:
             raise RuntimeError("Kokoro backend requires speech.kokoro_model_path.")
         model_candidate = Path(raw_model_path)
+        if not model_candidate.is_absolute():
+            model_candidate = repo_root / model_candidate
         if model_candidate.is_dir():
             onnx_models = sorted(model_candidate.rglob("*.onnx"))
             if not onnx_models:
@@ -211,6 +229,8 @@ class _KokoroSpeaker(_BaseSpeaker):
 
         raw_voices_path = str(voices_path or "").strip()
         voices_candidate = Path(raw_voices_path) if raw_voices_path else None
+        if voices_candidate is not None and not voices_candidate.is_absolute():
+            voices_candidate = repo_root / voices_candidate
         if voices_candidate and not voices_candidate.exists():
             raise RuntimeError(f"Kokoro voices file not found: {voices_candidate}")
         if voices_candidate is None:

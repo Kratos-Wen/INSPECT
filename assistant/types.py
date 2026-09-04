@@ -28,6 +28,17 @@ class AssistantSnapshot:
     memory_recalled: bool = False
     review_action: str = ""
     review_reason: str = ""
+    proposed_step: str = ""
+    active_claim: str = ""
+    claim_state: str = "insufficient"
+    claim_support: float = 0.0
+    claim_contradiction: float = 0.0
+    claim_margin: float = 0.0
+    claim_admissible: bool = True
+    missing_evidence_roles: List[str] = field(default_factory=list)
+    product_family: str = ""
+    acquisition_mode: str = "monitor"
+    external_observation_recommended: bool = False
 
 
 @dataclass(frozen=True)

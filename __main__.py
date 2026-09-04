@@ -1,4 +1,4 @@
-"""Module entry point for ``python -m mica_step_modular``."""
+"""Compatibility module entry point for the INSPECT command-line interface."""
 
 from .cli import main
 

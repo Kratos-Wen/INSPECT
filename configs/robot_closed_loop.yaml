@@ -1,0 +1,43 @@
+video:
+  stride: 1
+  write_annotated: false
+detection:
+  conf: 0.10
+  tta: false
+  use_builtin_tta: false
+geometry:
+  backend: moge
+  moge_model: Ruicheng/moge-2-vits-normal
+  use_fp16: true
+  resolution_level: 9
+  apply_mask: true
+temporal:
+  # Fixed-lattice images are independent observations, not one continuous
+  # camera stream. Each record is reset, so cross-view tracking is disabled.
+  backend: window_iou
+  window: 1
+track_evidence:
+  enabled: true
+scene_evidence:
+  enabled: true
+scene_graph:
+  enabled: true
+interaction:
+  enabled: true
+segmentation:
+  backend: none
+  fail_on_unavailable: false
+review:
+  enabled: true
+  evidence_prompt_enabled: false
+voice:
+  enabled: false
+speech:
+  enabled: false
+assistant:
+  enabled: false
+memory:
+  preset: memory-off
+  enabled: false
+ui:
+  enabled: false

@@ -24,6 +24,20 @@ def _state(text: object) -> str:
     return str(text or "").strip().upper()
 
 
+def _usable_evidence_key(key: object) -> str:
+    text = str(key or "").strip()
+    if not text:
+        return ""
+    parts = text.split(":")
+    if len(parts) >= 4 and parts[0] in {"relation", "scene"}:
+        if parts[0] == "relation" and _slug(parts[1]) == _slug(parts[3]):
+            return ""
+        if len(parts) >= 5 and parts[0] == "scene" and parts[1] in {"relation_started", "relation_ended"}:
+            if _slug(parts[2]) == _slug(parts[4]):
+                return ""
+    return text
+
+
 def _float(payload: Dict[str, Any], key: str, default: float = 0.0) -> float:
     try:
         return float(payload.get(key, default))
@@ -150,6 +164,41 @@ def _observed_evidence(
     for name, count in visible_counts.items():
         if count > 0:
             evidence.add(f"object:{_slug(name)}")
+    for name, count in dict(token.get("track_counts") or {}).items():
+        try:
+            count_value = int(count)
+        except (TypeError, ValueError):
+            count_value = 0
+        if count_value > 0:
+            evidence.add(f"track:object:{_slug(name)}")
+            evidence.add(f"object:{_slug(name)}")
+    for name, count in dict(token.get("stable_track_counts") or {}).items():
+        try:
+            count_value = int(count)
+        except (TypeError, ValueError):
+            count_value = 0
+        if count_value > 0:
+            evidence.add(f"track:stable_object:{_slug(name)}")
+    for key in token.get("track_evidence_keys", []) or []:
+        usable = _usable_evidence_key(key)
+        if usable:
+            evidence.add(usable)
+    for key in token.get("scene_evidence_keys", []) or []:
+        usable = _usable_evidence_key(key)
+        if usable:
+            evidence.add(usable)
+    for key in token.get("scene_relation_keys", []) or []:
+        usable = _usable_evidence_key(key)
+        if usable:
+            evidence.add(usable)
+    for key in token.get("scene_relation_change_keys", []) or []:
+        usable = _usable_evidence_key(key)
+        if usable:
+            evidence.add(usable)
+    for key in token.get("scene_transition_keys", []) or []:
+        usable = _usable_evidence_key(key)
+        if usable:
+            evidence.add(usable)
     for name, count in relevant_counts.items():
         if count > 0:
             evidence.add(f"focus_object:{_slug(name)}")
@@ -158,6 +207,8 @@ def _observed_evidence(
         if count > 0:
             evidence.add(f"relation_type:{_slug(key)}")
     for subject, predicate, obj in relation_facts:
+        if _slug(subject) == _slug(obj):
+            continue
         pred = _slug(predicate)
         evidence.add(f"relation:{_slug(subject)}:{pred}:{_slug(obj)}")
         evidence.add(f"relation_type:{pred}")
@@ -195,6 +246,9 @@ def _missing_evidence(record: Dict[str, Any], min_auto_confidence: float) -> Lis
         missing.add("visual:evidence_present")
     if not bool(record.get("stable", False)):
         missing.add("temporal:stable_observation")
+    token = dict(record.get("evidence_token") or {})
+    if bool(record.get("has_visual_evidence", False)) and not dict(token.get("stable_track_counts") or {}):
+        missing.add("track:stable_object")
     if predicted and confidence < min_auto_confidence:
         missing.add(f"confidence:{predicted.lower()}")
     review_action = str(record.get("review_action", "") or "")
@@ -251,6 +305,14 @@ def _feedback_evidence_overrides(feedback: Optional[Dict[str, Any]]) -> Dict[str
     return {"postcondition": [], "missing": [], "negative": []}
 
 
+def _feedback_evidence_status(feedback: Optional[Dict[str, Any]]) -> str:
+    if not feedback:
+        return ""
+    fb = dict(feedback.get("feedback") or {})
+    evidence_feedback = dict((fb.get("extras") or {}).get("evidence_feedback") or {})
+    return str(evidence_feedback.get("status", "") or "").strip().lower()
+
+
 def _verified_state(
     record: Dict[str, Any],
     feedback: Optional[Dict[str, Any]],
@@ -305,6 +367,10 @@ def _trust_weight(level: str, source: str) -> float:
     return 0.0
 
 
+def _can_create_strong_edge(level: str, trust_weight: float) -> bool:
+    return bool(level in {"L2", "L3", "L4"} and float(trust_weight) >= 0.70)
+
+
 def _next_step_admissible(
     verified: bool,
     level: str,
@@ -315,10 +381,27 @@ def _next_step_admissible(
         return False
     if decomposition.get("negative_evidence"):
         return False
-    required_postconditions = list(spec.postcondition_evidence if spec else [])
+    observed_admissibility = set(decomposition.get("admissibility_evidence", []))
+    required_admissibility = set(spec.admissibility_evidence if spec else [])
+    if required_admissibility:
+        observed = observed_admissibility.intersection(required_admissibility)
+        inside_hits = [key for key in observed if ":inside:" in key]
+        aligned_hits = [key for key in observed if ":aligned_with:" in key]
+        seated_hits = [key for key in observed if ":contacting:" in key or ":overlapping:" in key]
+        if inside_hits:
+            return True
+        if aligned_hits and seated_hits:
+            return True
+        if not any(":inside:" in key or ":aligned_with:" in key or ":contacting:" in key or ":overlapping:" in key for key in required_admissibility):
+            return bool(observed)
+        return False
+    required_postconditions = set(spec.postcondition_evidence if spec else [])
     if required_postconditions:
-        observed = set(decomposition.get("postcondition_evidence", []))
-        return bool(observed.intersection(required_postconditions))
+        observed = set(decomposition.get("postcondition_evidence", [])).intersection(required_postconditions)
+        relation_hits = [key for key in observed if key.startswith("relation:")]
+        if relation_hits:
+            return True
+        return bool(observed and not any(key.startswith(("object:", "track:object:")) for key in observed))
     if decomposition.get("postcondition_evidence"):
         return True
     return None
@@ -351,7 +434,7 @@ def export_verified_traces(
     state_specs: Optional[Dict[str, StateSpec]] = None,
     state_specs_path: Optional[Path] = None,
 ) -> List[VerifiedTraceEvent]:
-    """Convert a MICA run directory into INSPECT trace events."""
+    """Convert an INSPECT trace run directory into verified trace events."""
 
     run_dir = Path(run_dir)
     meta = _read_json(run_dir / "meta.json")
@@ -385,6 +468,7 @@ def export_verified_traces(
         candidate_state = spec.state_id if spec is not None else (verified_state or predicted)
         level = _verification_level(source, record)
         trust = _trust_weight(level, source)
+        can_create_strong_edge = _can_create_strong_edge(level, trust)
         decomposition = decompose_evidence(
             observed_evidence=observed,
             missing_evidence=missing,
@@ -392,6 +476,7 @@ def export_verified_traces(
             spec=spec,
         )
         evidence_overrides = _feedback_evidence_overrides(feedback)
+        evidence_status = _feedback_evidence_status(feedback)
         if evidence_overrides["postcondition"]:
             decomposition["postcondition_evidence"] = sorted(
                 set(decomposition["postcondition_evidence"]) | set(evidence_overrides["postcondition"])
@@ -402,6 +487,10 @@ def export_verified_traces(
             decomposition["negative_evidence"] = sorted(
                 set(decomposition["negative_evidence"]) | set(evidence_overrides["negative"])
             )
+        if evidence_status in {"rejected", "occluded", "unknown"}:
+            decomposition["postcondition_evidence"] = []
+            decomposition["admissibility_evidence"] = []
+            can_create_strong_edge = False
         next_step_admissible = _next_step_admissible(
             verified=verified,
             level=level,
@@ -419,6 +508,7 @@ def export_verified_traces(
                 verification_source=source,
                 verification_level=level,
                 trust_weight=trust,
+                can_create_strong_edge=can_create_strong_edge,
                 verified=verified,
                 accepted=accepted,
                 stable=bool(record.get("stable", False)),
@@ -450,6 +540,47 @@ def export_verified_traces(
                     "memory_active": bool(record.get("memory_active", False)),
                     "memory_reason": str(record.get("memory_reason", "") or ""),
                     "memory_recalled": bool(record.get("memory_recalled", False)),
+                    "track_counts": dict((record.get("evidence_token") or {}).get("track_counts") or {}),
+                    "stable_track_counts": dict((record.get("evidence_token") or {}).get("stable_track_counts") or {}),
+                    "track_evidence_keys": list((record.get("evidence_token") or {}).get("track_evidence_keys") or []),
+                    "scene_evidence_keys": [
+                        key
+                        for key in (
+                            _usable_evidence_key(item)
+                            for item in (record.get("evidence_token") or {}).get("scene_evidence_keys", []) or []
+                        )
+                        if key
+                    ],
+                    "scene_visible_objects": list((record.get("evidence_token") or {}).get("scene_visible_objects") or []),
+                    "scene_stable_objects": list((record.get("evidence_token") or {}).get("scene_stable_objects") or []),
+                    "scene_active_objects": list((record.get("evidence_token") or {}).get("scene_active_objects") or []),
+                    "scene_moving_objects": list((record.get("evidence_token") or {}).get("scene_moving_objects") or []),
+                    "scene_relation_keys": [
+                        key
+                        for key in (
+                            _usable_evidence_key(item)
+                            for item in (record.get("evidence_token") or {}).get("scene_relation_keys", []) or []
+                        )
+                        if key
+                    ],
+                    "scene_relation_change_keys": [
+                        key
+                        for key in (
+                            _usable_evidence_key(item)
+                            for item in (record.get("evidence_token") or {}).get("scene_relation_change_keys", []) or []
+                        )
+                        if key
+                    ],
+                    "scene_transition_keys": [
+                        key
+                        for key in (
+                            _usable_evidence_key(item)
+                            for item in (record.get("evidence_token") or {}).get("scene_transition_keys", []) or []
+                        )
+                        if key
+                    ],
+                    "procedural_scene_evidence": dict(record.get("scene_evidence") or {}),
+                    "evidence_status": evidence_status,
                     "ensemble_margin": _float(record, "ensemble_margin"),
                     "expert_disagreement": _float(record, "expert_disagreement"),
                     "gates": dict(record.get("gates") or {}),

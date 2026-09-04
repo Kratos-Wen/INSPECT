@@ -1,9 +1,9 @@
 """Typed artifacts for the INSPECT robot-verification layer.
 
 INSPECT stands for Interactive Supervision for Procedural Evidence and
-Cross-view Task Verification.  The module intentionally sits above the
-existing MICA step pipeline: it consumes run logs and turns assistance traces
-into robot-facing verification artifacts.
+Cross-view Task Verification. The trace engine consumes assistance run logs
+and turns online-corrected egocentric traces into robot-facing verification
+artifacts.
 """
 
 from __future__ import annotations
@@ -68,6 +68,7 @@ class VerifiedTraceEvent:
     verification_source: str = ""
     verification_level: str = "L0"
     trust_weight: float = 0.0
+    can_create_strong_edge: bool = False
     verified: bool = False
     accepted: bool = False
     stable: bool = False
@@ -110,6 +111,7 @@ class VerifiedTraceEvent:
             verification_source=str(payload.get("verification_source", "")),
             verification_level=str(payload.get("verification_level", "L0")),
             trust_weight=float(payload.get("trust_weight", 0.0)),
+            can_create_strong_edge=bool(payload.get("can_create_strong_edge", False)),
             verified=bool(payload.get("verified", False)),
             accepted=bool(payload.get("accepted", False)),
             stable=bool(payload.get("stable", False)),

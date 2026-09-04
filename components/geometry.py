@@ -8,7 +8,7 @@ from typing import Any, Optional
 import cv2
 import numpy as np
 
-from ..types import GeometryFrame
+from ..core_types import GeometryFrame
 
 
 def _resolve_torch_device(device: Optional[str], torch_module: Any) -> Any:
@@ -159,7 +159,12 @@ class GradientGeometryProvider:
             normals=normals,
             valid_mask=valid_mask,
             intrinsics=intrinsics,
-            extras={"provider": "gradient"},
+            extras={
+                "provider": "gradient",
+                "valid_ratio": 1.0,
+                "depth_mean": float(np.mean(depth)),
+                "depth_std": float(np.std(depth)),
+            },
         )
 
 
@@ -224,9 +229,18 @@ class MoGeGeometryProvider:
         valid_ratio = None
         if valid_mask is not None:
             valid_ratio = float(np.mean(valid_mask > 0))
+        depth_array = np.asarray(depth, dtype=np.float32)
+        if valid_mask is not None:
+            valid_depth = depth_array[np.asarray(valid_mask).astype(bool)]
+        else:
+            valid_depth = depth_array[np.isfinite(depth_array)]
+        if valid_depth.size == 0:
+            valid_depth = depth_array[np.isfinite(depth_array)]
+        depth_mean = float(np.mean(valid_depth)) if valid_depth.size else 0.0
+        depth_std = float(np.std(valid_depth)) if valid_depth.size else 0.0
 
         return GeometryFrame(
-            depth=np.asarray(depth, dtype=np.float32),
+            depth=depth_array,
             points=None if points is None else np.asarray(points, dtype=np.float32),
             normals=None if normals is None else np.asarray(normals, dtype=np.float32),
             valid_mask=None if valid_mask is None else np.asarray(valid_mask).astype(bool),
@@ -237,6 +251,8 @@ class MoGeGeometryProvider:
                 "model_name": self.model_name,
                 "device": str(self.device),
                 "valid_ratio": valid_ratio,
+                "depth_mean": depth_mean,
+                "depth_std": depth_std,
                 "has_points": points is not None,
                 "has_normals": normals is not None,
             },

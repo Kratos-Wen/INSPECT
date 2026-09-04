@@ -183,14 +183,16 @@ class CalibratedEvidenceVerifier:
         for observation in observations:
             truth_state = _truth_state(observation)
             truth_verified = _truth_bool(observation, ("postcondition_verified", "verified", "next_step_admissible", "valid_next_step"))
+            if truth_verified is None:
+                continue
             candidates = observation.candidate_states or self.graph.state_ids
             for candidate in candidates:
                 candidate = candidate.upper()
                 if not candidate:
                     continue
                 if truth_state:
-                    label = 1.0 if candidate == truth_state and truth_verified is not False else 0.0
-                elif truth_verified is not None and len(candidates) == 1:
+                    label = 1.0 if candidate == truth_state and truth_verified is True else 0.0
+                elif len(candidates) == 1:
                     label = 1.0 if truth_verified else 0.0
                 else:
                     continue

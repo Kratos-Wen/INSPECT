@@ -6,7 +6,15 @@ from collections import Counter
 from dataclasses import asdict
 from typing import Dict, Iterable, List, Optional
 
-from ..types import Detection, EvidenceToken, InteractionEvidence, SceneGraphFrame, StepPrediction
+from ..core_types import (
+    Detection,
+    EvidenceToken,
+    InteractionEvidence,
+    SceneEvidenceFrame,
+    SceneGraphFrame,
+    StepPrediction,
+    TrackEvidenceFrame,
+)
 
 
 class StructuredEvidenceEncoder:
@@ -29,6 +37,8 @@ class StructuredEvidenceEncoder:
         review_action: str = "",
         review_reason: str = "",
         interaction_evidence: Optional[InteractionEvidence] = None,
+        track_evidence: Optional[TrackEvidenceFrame] = None,
+        scene_evidence: Optional[SceneEvidenceFrame] = None,
     ) -> EvidenceToken:
         """Construct one compact evidence token from existing perception outputs."""
 
@@ -42,6 +52,8 @@ class StructuredEvidenceEncoder:
         ]
         relation_counts = Counter(predicate for _, predicate, _ in relation_facts)
         interaction = interaction_evidence or InteractionEvidence(contacts=[])
+        tracks = track_evidence or TrackEvidenceFrame(objects=[])
+        scene = scene_evidence or SceneEvidenceFrame()
         return EvidenceToken(
             frame_index=int(frame_index),
             prev_step=str(prev_step).strip().upper() if prev_step else None,
@@ -70,6 +82,23 @@ class StructuredEvidenceEncoder:
             interaction_target=str(interaction.interaction_target).strip().lower(),
             contact_phase=str(interaction.contact_phase).strip().lower(),
             transition_likelihood=float(interaction.transition_likelihood),
+            track_counts={str(key): int(value) for key, value in tracks.track_counts.items()},
+            stable_track_counts={str(key): int(value) for key, value in tracks.stable_track_counts.items()},
+            track_ids={str(key): [int(item) for item in value] for key, value in tracks.track_ids.items()},
+            track_confidences={str(key): float(value) for key, value in tracks.track_confidences.items()},
+            track_hits={str(key): int(value) for key, value in tracks.track_hits.items()},
+            track_ages={str(key): int(value) for key, value in tracks.track_ages.items()},
+            track_motion={str(key): float(value) for key, value in tracks.track_motion.items()},
+            track_evidence_keys=[str(item) for item in tracks.evidence_keys],
+            track_objects=[dict(item) for item in tracks.objects[:24]],
+            scene_evidence_keys=[str(item) for item in scene.evidence_keys],
+            scene_visible_objects=[str(item) for item in scene.visible_objects],
+            scene_stable_objects=[str(item) for item in scene.stable_objects],
+            scene_active_objects=[str(item) for item in scene.active_objects],
+            scene_moving_objects=[str(item) for item in scene.moving_objects],
+            scene_relation_keys=[str(item) for item in scene.relation_keys],
+            scene_relation_change_keys=[str(item) for item in scene.relation_change_keys],
+            scene_transition_keys=[str(item) for item in scene.transition_keys],
         )
 
     def _dense_scores(self, prediction: StepPrediction) -> Dict[str, float]:

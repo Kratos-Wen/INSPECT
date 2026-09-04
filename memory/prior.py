@@ -7,7 +7,7 @@ from typing import Dict, List
 
 import numpy as np
 
-from ..types import StepPrediction
+from ..core_types import StepPrediction
 from .types import MemoryMatch
 
 

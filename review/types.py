@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 
 from ..memory.types import MemoryObservation, MemoryRecallResult
-from ..types import FeedbackEvent, FusionResult, StepPrediction
+from ..core_types import FeedbackEvent, FusionResult, StepPrediction
 
 
 @dataclass(frozen=True)

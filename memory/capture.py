@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from ..types import FeedbackEvent, FusionResult
+from ..core_types import FeedbackEvent, FusionResult
 from .types import MemoryObservation
 
 

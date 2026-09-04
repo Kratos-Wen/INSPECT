@@ -11,6 +11,16 @@ RELATION_KEYWORDS = (
     "contact",
     "touch",
     "touching",
+    "inserted",
+    "insert",
+    "inside",
+    "slot",
+    "seated",
+    "seat",
+    "alignment",
+    "aligned",
+    "containment",
+    "gap",
     "support",
     "supported",
     "relation",
@@ -66,9 +76,11 @@ def parse_query(text: str) -> ParsedAssistantQuery:
             "have we seen this before",
             "have you seen this before",
             "what does memory say",
+            "what does memory recall",
             "what did memory retrieve",
             "what did memory recall",
             "is this similar to before",
+            "similar case",
             "do we have a similar previous case",
         ),
     ):
@@ -77,19 +89,104 @@ def parse_query(text: str) -> ParsedAssistantQuery:
         intent = "current_step"
     elif contains_any(lowered, ("next step", "what next", "what should i do next", "what do i do next")) or re.search(r"\bnext\b", lowered):
         intent = "next_step"
-    elif contains_any(lowered, ("why not progressing", "why not progress", "why is it not progressing", "why are we stuck", "why stuck", "why blocked")):
+    elif contains_any(
+        lowered,
+        (
+            "why not progressing",
+            "why not progress",
+            "why is it not progressing",
+            "why are we stuck",
+            "why stuck",
+            "why blocked",
+            "what evidence is missing",
+            "what evidence should i inspect",
+            "missing evidence",
+            "what is missing",
+            "why not",
+            "can i proceed",
+            "can i continue",
+            "safe to continue",
+            "sufficient to continue",
+            "current view sufficient",
+            "view sufficient",
+            "enough evidence",
+            "what should i inspect",
+            "where should i look",
+            "which evidence",
+        ),
+    ):
+        intent = "why_not_progressing"
+    elif contains_any(lowered, ("orientation", "orient")):
+        intent = "component_info"
+    elif contains_any(lowered, ("correct gear", "right gear", "wrong gear", "correct part", "right part", "wrong part")):
+        intent = "object_presence"
+    elif contains_any(lowered, ("pending claim", "claim is still pending", "still pending", "active claim", "unresolved claim", "insufficient claim")):
         intent = "why_not_progressing"
     elif any(keyword in lowered for keyword in RELATION_KEYWORDS):
         intent = "object_relation"
-    elif contains_any(lowered, ("how many", "count", "number of")):
+    elif contains_any(lowered, ("how many", "count", "number of")) and not contains_any(lowered, ("part number", "part no")):
         intent = "object_count"
     elif contains_any(lowered, ("do you see", "can you see", "is there", "are there", "visible", "what do you see", "which parts", "what parts")):
         intent = "object_presence"
-    elif contains_any(lowered, ("safety", "safe", "care", "maintenance", "maintain")):
+    elif contains_any(lowered, ("safety", "safe")):
         intent = "safety"
-    elif contains_any(lowered, ("fault", "problem", "issue", "wrong", "loose", "stuck", "not working", "won't fit")):
+    elif contains_any(
+        lowered,
+        (
+            "fault",
+            "problem",
+            "issue",
+            "wrong",
+            "loose",
+            "stuck",
+            "not working",
+            "won't fit",
+            "cannot close",
+            "can't close",
+            "unable to close",
+            "not close",
+            "cannot fit",
+            "does not rotate",
+            "do not rotate",
+            "not rotate",
+            "rotate smoothly",
+            "smoothly",
+            "jammed",
+        ),
+    ):
         intent = "troubleshooting"
-    elif contains_any(lowered, ("what is this", "what part is this", "which part is this", "tell me about", "part number", "feature")):
+    elif contains_any(
+        lowered,
+        (
+            "what is this",
+            "what part is this",
+            "which part is this",
+            "tell me about",
+            "part number",
+            "part no",
+            "feature",
+            "material",
+            "marking",
+            "marked",
+            "color",
+            "compatible",
+            "parts list",
+            "assembly step",
+            "ordered step",
+            "order of",
+            "orientation",
+            "orient",
+            "tool",
+            "equipment",
+            "workspace",
+            "prepare",
+            "storage",
+            "store",
+            "maintenance",
+            "maintain",
+            "care",
+        ),
+    ):
         intent = "component_info"
 
     target_step_hint = ""

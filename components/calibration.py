@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..types import StepPrediction
+from ..core_types import StepPrediction
 
 
 class IdentityStepCalibrator:

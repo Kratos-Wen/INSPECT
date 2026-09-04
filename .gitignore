@@ -15,6 +15,7 @@ env/
 .env
 .env.*
 .venv_kokoro/
+.python-version
 
 # Local model/cache artifacts
 .cache/
@@ -26,6 +27,7 @@ best.pt
 *.onnx
 *.safetensors
 *.bin
+*.joblib
 
 # Runtime outputs and experiment artifacts
 runs/
@@ -37,8 +39,19 @@ outputs/
 artifacts/
 inspect_artifacts/
 memory_bank/
+data/
+models/
+tmp/
+build/
+dist/
+*.egg-info/
+wandb/
 *.jsonl
 *.csv
+*.parquet
+*.feather
+*.sqlite
+*.sqlite3
 online_fusion_state.json
 ops_state.json
 ops_state_history.jsonl
@@ -65,6 +78,11 @@ ops_state_history.jsonl
 # Local reference papers and third-party source drops
 reference/
 *.pdf
+*.zip
+*.tar
+*.tar.gz
+*.pem
+*.key
 
 # OS/editor files
 .DS_Store

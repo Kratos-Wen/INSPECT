@@ -37,6 +37,8 @@ def _source_trust(event: VerifiedTraceEvent) -> float:
 
 
 def _strong_verification(event: VerifiedTraceEvent) -> bool:
+    if event.can_create_strong_edge:
+        return bool(event.verified)
     return bool(event.verified and event.verification_level in {"L2", "L3", "L4"} and _source_trust(event) >= 0.7)
 
 
@@ -69,7 +71,7 @@ def save_evidence_graph(graph: ProceduralEvidenceGraph, output_path: Path) -> No
 
 
 def load_evidence_graph(path: Path) -> ProceduralEvidenceGraph:
-    return ProceduralEvidenceGraph.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+    return ProceduralEvidenceGraph.from_dict(json.loads(Path(path).read_text(encoding="utf-8-sig")))
 
 
 def induce_evidence_graph(
@@ -83,8 +85,13 @@ def induce_evidence_graph(
     trace_list = list(traces)
     support: Dict[Tuple[str, str, str], float] = defaultdict(float)
     counts: Counter[Tuple[str, str, str]] = Counter()
+    source_counts: Dict[Tuple[str, str, str], Counter[str]] = defaultdict(Counter)
+    level_counts: Dict[Tuple[str, str, str], Counter[str]] = defaultdict(Counter)
+    trust_sums: Dict[Tuple[str, str, str], float] = defaultdict(float)
     weak_support: Dict[Tuple[str, str], float] = defaultdict(float)
     weak_counts: Counter[Tuple[str, str]] = Counter()
+    weak_source_counts: Dict[Tuple[str, str], Counter[str]] = defaultdict(Counter)
+    weak_level_counts: Dict[Tuple[str, str], Counter[str]] = defaultdict(Counter)
     state_counts: Counter[str] = Counter()
     strong_state_counts: Counter[str] = Counter()
     transitions: Counter[Tuple[str, str]] = Counter()
@@ -98,11 +105,11 @@ def induce_evidence_graph(
             state_counts[verified] += 1
             if _strong_verification(event):
                 strong_state_counts[verified] += 1
-            if event.prev_state and event.prev_state != verified:
-                transitions[(event.prev_state, verified)] += 1
             trust = _source_trust(event)
             conf = max(0.2, min(1.0, float(event.confidence)))
             if _strong_verification(event):
+                if event.prev_state and event.prev_state != verified:
+                    transitions[(event.prev_state, verified)] += 1
                 evidence_groups = [
                     ("requires", event.precondition_evidence),
                     ("supported_by_interaction", event.interaction_evidence),
@@ -112,16 +119,25 @@ def induce_evidence_graph(
                 ]
                 for predicate, keys in evidence_groups:
                     for key in keys:
+                        edge_key = (verified, predicate, key)
                         weight = trust * conf * _evidence_priority(key)
-                        support[(verified, predicate, key)] += weight
-                        counts[(verified, predicate, key)] += 1
+                        support[edge_key] += weight
+                        counts[edge_key] += 1
+                        source_counts[edge_key][event.verification_source or "unknown"] += 1
+                        level_counts[edge_key][event.verification_level or "L0"] += 1
+                        trust_sums[edge_key] += trust
                 for key in event.negative_evidence:
                     contradictions[(verified, key)] += 1
             else:
                 for key in event.observed_evidence:
+                    edge_key = (verified, key)
                     weight = max(0.01, trust * conf * _evidence_priority(key))
-                    weak_support[(verified, key)] += weight
-                    weak_counts[(verified, key)] += 1
+                    weak_support[edge_key] += weight
+                    weak_counts[edge_key] += 1
+                    weak_source_counts[edge_key][event.verification_source or "unknown"] += 1
+                    weak_level_counts[edge_key][event.verification_level or "L0"] += 1
+                for key in event.negative_evidence:
+                    contradictions[(verified, key)] += 1
             if predicted and predicted != verified:
                 for cue in event.failure_cues + event.negative_evidence:
                     contradictions[(predicted, cue)] += 1
@@ -132,15 +148,18 @@ def induce_evidence_graph(
 
     nodes: Dict[str, EvidenceNode] = {}
     edges: List[EvidenceEdge] = []
-    state_ids = sorted(state_counts.keys())
+    state_ids = sorted(set(state_counts.keys()) | set(strong_state_counts.keys()))
     for state_id in state_ids:
         node_id = _state_node(state_id)
+        strong_count = float(strong_state_counts[state_id])
+        weak_count = float(max(0, state_counts[state_id] - strong_state_counts[state_id]))
         nodes[node_id] = EvidenceNode(
             node_id=node_id,
             kind="state",
             label=state_id,
-            support=float(state_counts[state_id]),
-            weight=float(state_counts[state_id]),
+            support=strong_count,
+            weight=strong_count,
+            metadata={"strong_count": strong_count, "weak_count": weak_count},
         )
 
     by_state_predicate: Dict[Tuple[str, str], List[Tuple[str, float]]] = defaultdict(list)
@@ -169,7 +188,16 @@ def induce_evidence_graph(
                     target=node_id,
                     weight=float(normalized),
                     count=int(counts[(state_id, predicate, key)]),
-                    metadata={"raw_support": float(raw_weight), "trust_gate": "strong_only"},
+                    metadata={
+                        "raw_support": float(raw_weight),
+                        "trust_gate": "strong_only",
+                        "source_counts": dict(source_counts[(state_id, predicate, key)]),
+                        "level_counts": dict(level_counts[(state_id, predicate, key)]),
+                        "avg_trust": float(
+                            trust_sums[(state_id, predicate, key)]
+                            / max(1, counts[(state_id, predicate, key)])
+                        ),
+                    },
                 )
             )
 
@@ -196,7 +224,11 @@ def induce_evidence_graph(
                 target=target,
                 weight=float(raw_weight),
                 count=int(weak_counts[(state_id, key)]),
-                metadata={"trust_gate": "weak_prior_only"},
+                metadata={
+                    "trust_gate": "weak_prior_only",
+                    "source_counts": dict(weak_source_counts[(state_id, key)]),
+                    "level_counts": dict(weak_level_counts[(state_id, key)]),
+                },
             )
         )
 
@@ -256,7 +288,7 @@ def induce_evidence_graph(
         state_ids=all_states,
         nodes=nodes,
         edges=edges,
-        state_priors=_state_priors(state_counts),
+        state_priors=_state_priors(strong_state_counts),
         metadata={
             "num_trace_events": len(trace_list),
             "num_verified_events": sum(1 for event in trace_list if event.verified),

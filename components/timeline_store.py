@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import deque
 from typing import Deque, List, Optional
 
-from ..types import EvidenceToken
+from ..core_types import EvidenceToken
 
 
 class EvidenceTimelineStore:

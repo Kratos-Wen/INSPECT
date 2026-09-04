@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from ..types import EvidenceToken
+from ..core_types import EvidenceToken
 from .kb import KnowledgeBase
 from .timeline_store import EvidenceTimelineStore
 
@@ -147,9 +147,14 @@ class CompiledStepGraphPrior:
             else 0.0
         )
 
+        object_term = self.requirement_bonus * matched_ratio + 0.5 * self.requirement_bonus * any_ratio
+        if rule.expected_relations and expected_ratio <= 0.0:
+            # In unconstrained procedural scenes, object presence is a weak cue only.
+            # Do not let visible parts alone push the temporal model into a
+            # completed procedural state when postcondition relations are absent.
+            object_term *= 0.20
         return (
-            self.requirement_bonus * matched_ratio
-            + 0.5 * self.requirement_bonus * any_ratio
+            object_term
             - self.requirement_penalty * missing_ratio
             - self.forbid_penalty * forbid_ratio
             + self.relation_bonus * expected_ratio

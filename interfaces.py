@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Protocol, Tuple
 
 import numpy as np
 
-from .types import Detection, EvidenceToken, FeedbackEvent, FusionResult, GeometryFrame, SceneGraphFrame, StepPrediction
+from .core_types import Detection, EvidenceToken, FeedbackEvent, FusionResult, GeometryFrame, SceneGraphFrame, StepPrediction
 
 
 class Detector(Protocol):

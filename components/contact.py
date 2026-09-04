@@ -8,7 +8,7 @@ from typing import Deque, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
-from ..types import Detection, GeometryFrame, HandObjectContact, InteractionEvidence, SceneGraphFrame, SegmentationMask
+from ..core_types import Detection, GeometryFrame, HandObjectContact, InteractionEvidence, SceneGraphFrame, SegmentationMask
 
 
 def _name(value: object) -> str:
@@ -114,13 +114,14 @@ class HandObjectContactEstimator:
                     continue
                 obj = detections[object_index]
                 contact = self._score_pair(actor_index, actor, object_index, obj, geometry)
-                if contact.contact_score >= self.min_contact_score:
+                if contact.contact_score >= self.min_contact_score or contact.phase == "release":
                     contacts.append(contact)
         contacts.extend(mask_contacts)
 
         contacts.sort(key=lambda item: item.contact_score, reverse=True)
-        active_object = contacts[0].object_name if contacts else ""
-        contact_phase = contacts[0].phase if contacts else "none"
+        primary_contact = self._primary_contact(contacts)
+        active_object = primary_contact.object_name if primary_contact is not None else ""
+        contact_phase = primary_contact.phase if primary_contact is not None else "none"
         interaction_target = self._interaction_target(active_object, scene_graph, relevant_detections)
         transition_likelihood = self._transition_likelihood(contacts)
         contact_counts = Counter(contact.object_name for contact in contacts)
@@ -231,9 +232,9 @@ class HandObjectContactEstimator:
                 distance = _edge_distance(tuple(float(v) for v in actor.xyxy), tuple(float(v) for v in obj.xyxy))
                 distance_score = max(0.0, 1.0 - distance / max(1.0, self.near_margin_px))
                 score = float(min(1.0, 0.70 * overlap + 0.30 * distance_score))
-                if score < self.min_contact_score:
-                    continue
                 phase = self._phase((_name(actor.name), _name(obj.name)), score)
+                if score < self.min_contact_score and phase != "release":
+                    continue
                 contacts.append(
                     HandObjectContact(
                         hand_name=_name(actor.name),
@@ -256,6 +257,18 @@ class HandObjectContactEstimator:
                     )
                 )
         return contacts
+
+    def _primary_contact(self, contacts: List[HandObjectContact]) -> Optional[HandObjectContact]:
+        if not contacts:
+            return None
+        phase_priority = {"release": 3.0, "contact": 2.0, "approach": 1.0, "none": 0.0}
+        return max(
+            contacts,
+            key=lambda item: (
+                phase_priority.get(str(item.phase), 0.0),
+                float(item.contact_score),
+            ),
+        )
 
     def _phase(self, pair_key: Tuple[str, str], contact_score: float) -> str:
         history = self._score_history[pair_key]
@@ -299,3 +312,8 @@ class HandObjectContactEstimator:
         best = contacts[0]
         phase_bonus = {"approach": 0.15, "contact": 0.25, "release": 0.35}.get(best.phase, 0.0)
         return float(min(1.0, best.contact_score + phase_bonus))
+
+    def reset(self) -> None:
+        """Clear temporal contact phases for a new episode or view stream."""
+
+        self._score_history.clear()

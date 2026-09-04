@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from ..types import Detection, GeometryFrame
+from ..core_types import Detection, GeometryFrame
 
 
 def _center_of(box: tuple[float, float, float, float]) -> tuple[float, float]:
