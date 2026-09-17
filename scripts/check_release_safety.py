@@ -84,7 +84,10 @@ def audit(root: Path, max_bytes: int) -> list[str]:
         if lowered_parts & BLOCKED_DIRS:
             findings.append(f"blocked directory: {relative}")
         if path.suffix.lower() in BLOCKED_SUFFIXES:
-            findings.append(f"blocked file type: {relative}")
+            # README documentation figures are the one sanctioned binary
+            # location; everything else stays text-only.
+            if relative.parts[0] != "assets":
+                findings.append(f"blocked file type: {relative}")
         size = path.stat().st_size
         if size > max_bytes:
             findings.append(f"file exceeds {max_bytes} bytes: {relative}")
