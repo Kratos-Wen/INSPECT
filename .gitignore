@@ -90,3 +90,6 @@ Thumbs.db
 desktop.ini
 .idea/
 .vscode/
+
+# README documentation figures are tracked despite the binary blanket rules.
+!assets/*.jpg
