@@ -151,8 +151,29 @@ python scripts/check_release_safety.py --root .
 Some integration tests require optional models or datasets and skip when those
 assets are not available.
 
+## Frozen evaluation artifacts
+
+A few audit and repair scripts replay the frozen paper evaluations. They read
+released artifact bundles from `artifacts/` (override with the
+`INSPECT_ARTIFACTS_ROOT` environment variable) and raise a `FileNotFoundError`
+naming the exact expected file when an input is missing. Scripts that only
+need your own data use the `data/`, `models/`, and `outputs/` layout described
+above.
+
 ## Citation and license
 
-Citation metadata and a software license will be added with the archival
-release. Until a license is present, the source remains subject to copyright
-and should not be redistributed or incorporated into other projects.
+This repository accompanies the paper "INSPECT: Learning Robot View Selection
+from Assistant Use" (under review). If you use this code, please cite:
+
+```bibtex
+@article{wen2026inspect,
+  title   = {{INSPECT}: Learning Robot View Selection from Assistant Use},
+  author  = {Wen, Di and Yang, Kailun and Guo, Wenhao and Shi, Yitian and
+             Zheng, Junwei and Chen, Yufan and Liu, Ruiping and Wei, Jiale and
+             Rayyes, Rania and Peng, Kunyu},
+  year    = {2026},
+  note    = {Under review},
+}
+```
+
+The source code is released under the MIT License (see `LICENSE`).

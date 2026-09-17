@@ -98,14 +98,24 @@ def label_from_feedback(feedback_row: Mapping[str, Any], timeline_row: Mapping[s
 
 
 def features_from_iteration(record: Mapping[str, Any], timeline_row: Mapping[str, Any]) -> Dict[str, float]:
-    detections = list(record.get("fused_detections") or record.get("raw_detections") or [])
+    # An explicitly empty fused result is abstention, not permission to bypass filtering.
+    detections = list(record.get("fused_detections") or []) if "fused_detections" in record else list(record.get("raw_detections") or [])
+    shape = record.get("frame_shape") or record.get("image_shape") or (1080, 1920)
     return extract_relation_features(
         detections,
         claim_id=timeline_row.get("claim_id", ""),
         step_id=timeline_row.get("step_id", ""),
         product=timeline_row.get("assembly_set", ""),
-        image_shape=(1080, 1920),
+        image_shape=(int(shape[0]), int(shape[1])),
+        role_detections=list(record.get("role_detections") or []),
     )
+
+
+def feedback_window_frames(sorted_frames, frame, timeline_row, window):
+    """Keep supervision inside the confirmed interval and causal window."""
+    start = int(timeline_row["start_frame_i"])
+    end = min(int(frame), int(timeline_row["end_frame_i"]))
+    return [value for value in sorted_frames if start <= value <= end][-max(1, int(window)):]
 
 
 def build_samples(
@@ -139,7 +149,7 @@ def build_samples(
             if label not in {"support", "contradiction"}:
                 continue
             claim_id = normalize_claim(trow.get("claim_id"), trow.get("step_id"))
-            window_frames = [value for value in sorted_frames if value <= frame][-max(1, int(window)) :]
+            window_frames = feedback_window_frames(sorted_frames, frame, trow, window)
             for offset, sample_frame in enumerate(window_frames):
                 record = by_frame[sample_frame]
                 fused_conf = float(record.get("fused_conf", 0.0) or 0.0)
@@ -193,6 +203,8 @@ def main() -> None:
             "min_conf": float(args.min_conf),
             "training_source": "online_assistance_feedback_only",
             "uses_robot_view_training": False,
+            "feature_contract": "explicit fused detections; causal within-interval feedback",
+            "legacy_frame_shape_fallback": [1080, 1920],
         }
     )
     model.save(args.output)
