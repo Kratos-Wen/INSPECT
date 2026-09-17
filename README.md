@@ -1,4 +1,20 @@
-# INSPECT
+<div align="center">
+
+# INSPECT: Learning Robot View Selection from Assistant Use
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](#installation)
+[![Tests](https://img.shields.io/badge/Tests-164%20passing-brightgreen.svg)](#tests)
+
+**Official implementation of *INSPECT: Learning Robot View Selection from Assistant Use*.**
+
+<img src="assets/teaser.jpg" width="92%" alt="INSPECT teaser: assistance evidence supervises robot view selection">
+
+*The evidence that grounds assembly assistance also teaches robots where to inspect.*
+
+</div>
+
+---
 
 INSPECT is an evidence-grounded procedural assistant and active robot
 inspection system. It separates step proposal from claim verification,
@@ -9,6 +25,19 @@ evidence a robot camera should reveal next.
 The online robot policy receives the current RGB observation, the active claim,
 and fixed-lattice geometry. It never observes candidate-view images while
 selecting a view.
+
+## System overview
+
+<div align="center">
+<img src="assets/system_overview.jpg" width="100%" alt="INSPECT system overview: egocentric assistant, evidence-seeking supervision, and fixed-lattice robot inspection">
+</div>
+
+The egocentric assistant answers part queries and checks claims against
+calibrated visual evidence (top). Resolved claims are organized into
+evidence-seeking supervision that separates evidence requirements from
+camera-reproducible observation changes (bottom center), and an
+object-centered relative view policy selects fixed-lattice robot views with
+clause-level evidence screening (bottom right).
 
 ## Repository contents
 
